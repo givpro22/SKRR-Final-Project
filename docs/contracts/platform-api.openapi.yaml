@@ -1,0 +1,1376 @@
+openapi: 3.1.0
+info:
+  title: SKRR 플랫폼 API
+  version: 0.1.0
+  description: |
+    프론트엔드 ↔ 백엔드 계약 초안. 화면 근거는 harness/references/export/UI-*.png 이다.
+    - 프론트엔드는 이 API만 호출한다. AI 서버와 실행기는 백엔드를 거친다.
+    - JSON 필드는 camelCase, 시각은 ISO-8601 UTC, 오류 응답은 application/problem+json 이다.
+    - 오래 걸리는 작업은 202를 반환하고 조회 또는 SSE로 진행 상황을 확인한다.
+servers:
+  - url: /api/v1
+tags:
+  - name: project
+  - name: document
+  - name: knowledge-base
+  - name: test-request
+  - name: scenario
+  - name: run
+  - name: report
+paths:
+  /me:
+    get:
+      operationId: getCurrentUser
+      tags: [project]
+      summary: 현재 사용자 (사이드바 하단 프로필)
+      responses:
+        '200':
+          description: 현재 사용자
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+  /projects:
+    get:
+      operationId: listProjects
+      tags: [project]
+      summary: 프로젝트 목록 (사이드바 프로젝트 선택)
+      responses:
+        '200':
+          description: 프로젝트 목록
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Project' }
+    post:
+      operationId: createProject
+      tags: [project]
+      summary: 프로젝트 생성
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProjectCreate' }
+      responses:
+        '201':
+          description: 생성됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Project' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /projects/{projectId}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      operationId: getProject
+      tags: [project]
+      summary: 프로젝트 조회
+      responses:
+        '200':
+          description: 프로젝트
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Project' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      operationId: updateProject
+      tags: [project]
+      summary: 프로젝트와 대상 사이트 URL 수정 (UI-01)
+      description: targetUrl이 바뀌면 targetUrlStatus는 UNVERIFIED로 돌아간다.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ProjectUpdate' }
+      responses:
+        '200':
+          description: 수정됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Project' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /projects/{projectId}/target-verification:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    post:
+      operationId: verifyTargetSite
+      tags: [project]
+      summary: 대상 사이트 Playwright 접속 확인 (UI-01 "Playwright 연결 확인" 배지)
+      responses:
+        '200':
+          description: 확인 결과. 접속 실패도 200으로 반환하고 상태 값으로 구분한다.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TargetVerification' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /projects/{projectId}/documents:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      operationId: listDocuments
+      tags: [document]
+      summary: 현재 활성 기준 문서 목록 (UI-01)
+      responses:
+        '200':
+          description: 문서 목록
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Document' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      operationId: uploadDocument
+      tags: [document]
+      summary: 기준 문서 업로드 (FR-01, 20MB 이하)
+      description: 같은 유형의 기존 문서는 비활성화되고 version이 1 증가한다. 지식 베이스 상태는 STALE이 된다.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [type, file]
+              properties:
+                type: { $ref: '#/components/schemas/DocumentType' }
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '201':
+          description: 업로드됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Document' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+  /documents/{documentId}:
+    parameters:
+      - name: documentId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getDocument
+      tags: [document]
+      summary: 문서 조회 (인덱싱 진행률 포함)
+      responses:
+        '200':
+          description: 문서
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Document' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      operationId: deleteDocument
+      tags: [document]
+      summary: 문서 삭제 (UI-01 더보기 메뉴)
+      responses:
+        '204': { description: 삭제됨 }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /documents/{documentId}/download-link:
+    parameters:
+      - name: documentId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getDocumentDownloadLink
+      tags: [document]
+      summary: 문서 다운로드 링크 (S3 presigned URL)
+      responses:
+        '200':
+          description: 다운로드 링크
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DownloadLink' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /document-templates/{documentType}:
+    parameters:
+      - name: documentType
+        in: path
+        required: true
+        schema: { $ref: '#/components/schemas/DocumentType' }
+    get:
+      operationId: downloadDocumentTemplate
+      tags: [document]
+      summary: 문서 템플릿 받기 (UI-01 "템플릿 받기")
+      responses:
+        '200':
+          description: 템플릿 파일
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /projects/{projectId}/knowledge-base:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      operationId: getKnowledgeBase
+      tags: [knowledge-base]
+      summary: 지식 베이스 상태·미리보기·등록 요건 (UI-01 우측, 사이드바 하단)
+      responses:
+        '200':
+          description: 지식 베이스
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KnowledgeBase' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /projects/{projectId}/knowledge-base/build:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    post:
+      operationId: buildKnowledgeBase
+      tags: [knowledge-base]
+      summary: 지식 베이스 구축 (UI-01 "지식 베이스 구축")
+      description: 필수 문서 3종이 없으면 409 MISSING_REQUIRED_DOCUMENTS를 반환한다 (FR-01 수용기준).
+      responses:
+        '202':
+          description: 구축 시작
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/KnowledgeBase' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /projects/{projectId}/activities:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      operationId: listActivities
+      tags: [project]
+      summary: 최근 활동 (UI-01 우측)
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 50, default: 10 }
+      responses:
+        '200':
+          description: 활동 목록
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Activity' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /projects/{projectId}/test-requests:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      operationId: listTestRequests
+      tags: [test-request]
+      summary: 테스트 요청 목록 (사이드바 "테스트 요청")
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: 요청 목록
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/TestRequest' }
+                  nextCursor: { type: [string, 'null'] }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      operationId: createTestRequest
+      tags: [test-request]
+      summary: 자연어 테스트 요청 생성 (UI-02-1, FR-02)
+      description: 지식 베이스가 READY가 아니면 409 KNOWLEDGE_BASE_NOT_READY를 반환한다.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TestRequestCreate' }
+      responses:
+        '202':
+          description: 후보 생성 시작
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TestRequest' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /test-requests/{testRequestId}:
+    parameters:
+      - $ref: '#/components/parameters/TestRequestId'
+    get:
+      operationId: getTestRequest
+      tags: [test-request]
+      summary: 요청과 후보 조회 (UI-02-1B). 생성 중에는 2초 간격으로 조회한다.
+      responses:
+        '200':
+          description: 요청
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TestRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /test-requests/{testRequestId}/selection:
+    parameters:
+      - $ref: '#/components/parameters/TestRequestId'
+    post:
+      operationId: selectRefinedRequest
+      tags: [test-request]
+      summary: 후보 1개 선택 또는 직접 입력 후 시나리오 생성 시작 (UI-02-1B, WBS 4.5.6)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SelectionRequest' }
+      responses:
+        '202':
+          description: 시나리오 생성 시작
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TestRequest' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /test-requests/{testRequestId}/scenarios:
+    parameters:
+      - $ref: '#/components/parameters/TestRequestId'
+    get:
+      operationId: listScenarios
+      tags: [scenario]
+      summary: 시나리오·케이스 조회 (UI-02-5)
+      responses:
+        '200':
+          description: 시나리오 목록과 상태 집계
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ScenarioList' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /scenarios/{scenarioId}:
+    parameters:
+      - $ref: '#/components/parameters/ScenarioId'
+    get:
+      operationId: getScenario
+      tags: [scenario]
+      summary: 시나리오 조회
+      responses:
+        '200':
+          description: 시나리오
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Scenario' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      operationId: updateScenario
+      tags: [scenario]
+      summary: 시나리오 수정 (UI-02-5 연필 아이콘)
+      description: 내용이 바뀌면 version이 증가하고 상태는 REVIEW_REQUIRED로 돌아간다.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ScenarioUpdate' }
+      responses:
+        '200':
+          description: 수정됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Scenario' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /scenarios/{scenarioId}/approve:
+    parameters:
+      - $ref: '#/components/parameters/ScenarioId'
+    post:
+      operationId: approveScenario
+      tags: [scenario]
+      summary: 시나리오 승인 (FR-03)
+      responses:
+        '200':
+          description: 승인됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Scenario' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /scenarios/{scenarioId}/reject:
+    parameters:
+      - $ref: '#/components/parameters/ScenarioId'
+    post:
+      operationId: rejectScenario
+      tags: [scenario]
+      summary: 시나리오 반려
+      responses:
+        '200':
+          description: 반려됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Scenario' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /scenarios/{scenarioId}/regenerate:
+    parameters:
+      - $ref: '#/components/parameters/ScenarioId'
+    post:
+      operationId: regenerateScenario
+      tags: [scenario]
+      summary: 시나리오 재생성
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                feedback: { type: string, maxLength: 500 }
+      responses:
+        '202':
+          description: 재생성 시작
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Scenario' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /test-cases/{testCaseId}:
+    parameters:
+      - name: testCaseId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getTestCase
+      tags: [scenario]
+      summary: 테스트 케이스 상세 (UI-02-5 행 펼치기)
+      responses:
+        '200':
+          description: 테스트 케이스
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TestCase' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      operationId: updateTestCase
+      tags: [scenario]
+      summary: 테스트 케이스 수정
+      description: 소속 시나리오의 승인이 해제되어 REVIEW_REQUIRED로 돌아간다.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TestCaseUpdate' }
+      responses:
+        '200':
+          description: 수정됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TestCase' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /test-requests/{testRequestId}/runs:
+    parameters:
+      - $ref: '#/components/parameters/TestRequestId'
+    post:
+      operationId: startRun
+      tags: [run]
+      summary: 체크한 승인 시나리오로 테스트 실행 (UI-02-5 "테스트 실행", FR-04, FR-05)
+      description: 승인되지 않은 시나리오가 포함되면 409 SCENARIO_NOT_APPROVED를 반환한다.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RunCreate' }
+      responses:
+        '202':
+          description: 실행 준비 시작
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Run' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /projects/{projectId}/runs:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      operationId: listRuns
+      tags: [run]
+      summary: 실행 목록 (사이드바 "실행 모니터", "리포트")
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: 실행 목록
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Run' }
+                  nextCursor: { type: [string, 'null'] }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /runs/{runId}:
+    parameters:
+      - $ref: '#/components/parameters/RunId'
+    get:
+      operationId: getRun
+      tags: [run]
+      summary: 실행 현재 상태 스냅샷 (UI-03 첫 진입과 SSE 재연결 시 사용)
+      responses:
+        '200':
+          description: 실행 상세
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RunDetail' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /runs/{runId}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/RunId'
+    post:
+      operationId: cancelRun
+      tags: [run]
+      summary: 실행 중단 (UI-03 "실행 중단")
+      responses:
+        '202':
+          description: 중단 요청됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Run' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /runs/{runId}/rerun:
+    parameters:
+      - $ref: '#/components/parameters/RunId'
+    post:
+      operationId: rerunRun
+      tags: [run]
+      summary: 실패 건 또는 특정 케이스 재실행 (UI-04 "실패 2건 재실행", "이 케이스 재실행")
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RerunRequest' }
+      responses:
+        '202':
+          description: 새 실행 시작
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Run' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /runs/{runId}/events:
+    parameters:
+      - $ref: '#/components/parameters/RunId'
+      - name: afterSeq
+        in: query
+        required: false
+        schema: { type: integer, format: int64, minimum: 0 }
+        description: 첫 연결에 사용한다. 브라우저 EventSource는 첫 요청에 헤더를 지정할 수 없기 때문이다. 스냅샷의 lastEventSeq를 넣는다.
+      - name: Last-Event-ID
+        in: header
+        required: false
+        schema: { type: string }
+        description: 재연결 시 브라우저가 자동으로 보낸다. afterSeq와 함께 오면 이 값을 우선한다.
+    get:
+      operationId: streamRunEvents
+      tags: [run]
+      summary: 실행 실시간 이벤트 SSE (UI-03, WBS 4.3.6). 형식은 docs/contracts/events.md
+      responses:
+        '200':
+          description: Server-Sent Events 스트림
+          content:
+            text/event-stream:
+              schema: { type: string }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /runs/{runId}/logs:
+    parameters:
+      - $ref: '#/components/parameters/RunId'
+    get:
+      operationId: listRunLogs
+      tags: [run]
+      summary: 저장된 실행 로그 조회
+      parameters:
+        - name: afterSeq
+          in: query
+          schema: { type: integer, format: int64, minimum: 0 }
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: 로그 목록
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/RunLogEntry' }
+                  nextAfterSeq: { type: [integer, 'null'], format: int64 }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /runs/{runId}/api-calls:
+    parameters:
+      - $ref: '#/components/parameters/RunId'
+    get:
+      operationId: listRunApiCalls
+      tags: [run]
+      summary: API 호출 목록과 집계 (UI-03 "API 호출" 패널)
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: API 호출 목록
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, totalCount]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/ApiCall' }
+                  totalCount: { type: integer }
+                  averageDurationMs: { type: [integer, 'null'] }
+                  nextCursor: { type: [string, 'null'] }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /runs/{runId}/report:
+    parameters:
+      - $ref: '#/components/parameters/RunId'
+    get:
+      operationId: getRunReport
+      tags: [report]
+      summary: 결과 리포트 (UI-04, FR-06, FR-07)
+      description: 실행이 끝나기 전에는 409 RUN_NOT_FINISHED를 반환한다.
+      responses:
+        '200':
+          description: 리포트
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RunReport' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /runs/{runId}/report.pdf:
+    parameters:
+      - $ref: '#/components/parameters/RunId'
+    get:
+      operationId: exportRunReportPdf
+      tags: [report]
+      summary: 리포트 PDF 내보내기 (UI-04). WBS에 작업이 없어 MVP 이후 항목이다.
+      x-priority: later
+      responses:
+        '200':
+          description: PDF 파일
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /case-results/{caseResultId}:
+    parameters:
+      - $ref: '#/components/parameters/CaseResultId'
+    get:
+      operationId: getCaseResult
+      tags: [report]
+      summary: 실패 케이스 상세 (UI-04 우측 패널)
+      responses:
+        '200':
+          description: 케이스 결과 상세
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CaseResultDetail' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /case-results/{caseResultId}/spec:
+    parameters:
+      - $ref: '#/components/parameters/CaseResultId'
+    get:
+      operationId: getCaseResultSpec
+      tags: [report]
+      summary: 실행한 Playwright spec 코드 (UI-03 "spec 코드 보기")
+      responses:
+        '200':
+          description: spec 코드
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GeneratedSpec' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /artifacts/{artifactId}/download-link:
+    parameters:
+      - name: artifactId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getArtifactDownloadLink
+      tags: [report]
+      summary: 실행 증거 링크 (스크린샷, trace, HAR)
+      responses:
+        '200':
+          description: 다운로드 링크
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DownloadLink' }
+        '404': { $ref: '#/components/responses/NotFound' }
+components:
+  parameters:
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    TestRequestId:
+      name: testRequestId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    ScenarioId:
+      name: scenarioId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    RunId:
+      name: runId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    CaseResultId:
+      name: caseResultId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Cursor:
+      name: cursor
+      in: query
+      schema: { type: string }
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+  responses:
+    BadRequest:
+      description: 입력값 오류 (VALIDATION_FAILED)
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    NotFound:
+      description: 대상 없음 (RESOURCE_NOT_FOUND)
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    Conflict:
+      description: 현재 상태에서 불가능한 요청
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    PayloadTooLarge:
+      description: 파일 크기 초과 (FILE_TOO_LARGE)
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+  schemas:
+    Problem:
+      type: object
+      required: [title, status, code]
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        code: { $ref: '#/components/schemas/ErrorCode' }
+        fieldErrors:
+          type: array
+          items:
+            type: object
+            required: [field, message]
+            properties:
+              field: { type: string }
+              message: { type: string }
+    ErrorCode:
+      type: string
+      enum:
+        - VALIDATION_FAILED
+        - RESOURCE_NOT_FOUND
+        - FILE_TOO_LARGE
+        - UNSUPPORTED_FILE_TYPE
+        - TARGET_URL_MISSING
+        - MISSING_REQUIRED_DOCUMENTS
+        - KNOWLEDGE_BASE_NOT_READY
+        - INVALID_STATE_TRANSITION
+        - SCENARIO_NOT_APPROVED
+        - RUN_NOT_FINISHED
+        - RUN_ALREADY_ACTIVE
+        - DEPENDENCY_UNAVAILABLE
+        - INTERNAL_ERROR
+    TargetUrlStatus: { type: string, enum: [UNVERIFIED, CHECKING, REACHABLE, UNREACHABLE] }
+    DocumentType: { type: string, enum: [REQUIREMENT, API_SPEC, CATALOG, TEST_DATA] }
+    DocumentStatus: { type: string, enum: [UPLOADED, INDEXING, INDEXED, REGISTERED, FAILED] }
+    KnowledgeBaseStatus: { type: string, enum: [NOT_BUILT, BUILDING, READY, STALE, FAILED] }
+    TestRequestStatus: { type: string, enum: [REFINING, AWAITING_SELECTION, GENERATING, GENERATED, FAILED] }
+    SelectionSource: { type: string, enum: [CANDIDATE, CUSTOM] }
+    ScenarioStatus: { type: string, enum: [GENERATING, GUARD_RETRY, REVIEW_REQUIRED, APPROVED, REJECTED, GUARD_FAILED] }
+    VerificationScope: { type: string, enum: [UI, API, DB] }
+    TestCaseType: { type: string, enum: [NORMAL, EXCEPTION, BOUNDARY] }
+    CompileStatus: { type: string, enum: [PASSED, FAILED] }
+    RunStatus: { type: string, enum: [PREPARING, RUNNING, CANCELLING, PASSED, FAILED, CANCELLED, ERROR] }
+    ScenarioRunStatus: { type: string, enum: [WAITING, RUNNING, PASSED, FAILED, SKIPPED, CANCELLED] }
+    CaseResultStatus: { type: string, enum: [PENDING, RUNNING, PASSED, FAILED, SKIPPED, CANCELLED, ERROR] }
+    StepKind: { type: string, enum: [SETUP, UI, API, DB, ASSERT, TEARDOWN] }
+    StepStatus: { type: string, enum: [PENDING, RUNNING, PASSED, FAILED, SKIPPED] }
+    Verdict: { type: string, enum: [MATCH, MISMATCH, NOT_APPLICABLE] }
+    Severity: { type: string, enum: [LOW, MEDIUM, HIGH, CRITICAL] }
+    FailureType:
+      type: string
+      enum: [DATA_MISMATCH, ASSERTION_FAILED, ELEMENT_NOT_FOUND, API_ERROR, TIMEOUT, ENVIRONMENT_ERROR, TEST_CODE_ERROR]
+    ArtifactType: { type: string, enum: [SCREENSHOT, TRACE, HAR, SPEC] }
+    RunEventType:
+      type: string
+      enum: [run.status, scenario.status, case.status, step.status, log, api.call, screenshot, verification, heartbeat]
+    User:
+      type: object
+      required: [id, displayName, roleLabel]
+      properties:
+        id: { type: string, format: uuid }
+        displayName: { type: string }
+        roleLabel: { type: string }
+    Project:
+      type: object
+      required: [id, name, targetUrlStatus, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, examples: ['목업 쇼핑몰 v1.2'] }
+        targetUrl: { type: [string, 'null'], format: uri }
+        targetUrlStatus: { $ref: '#/components/schemas/TargetUrlStatus' }
+        targetCheckedAt: { type: [string, 'null'], format: date-time }
+        queryApiBaseUrl: { type: [string, 'null'], format: uri }
+        testControlUrl: { type: [string, 'null'], format: uri }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    ProjectCreate:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        targetUrl: { type: string, format: uri, maxLength: 500 }
+        queryApiBaseUrl: { type: string, format: uri, maxLength: 500 }
+        testControlUrl: { type: string, format: uri, maxLength: 500 }
+    ProjectUpdate:
+      type: object
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        targetUrl: { type: string, format: uri, maxLength: 500 }
+        queryApiBaseUrl: { type: string, format: uri, maxLength: 500 }
+        testControlUrl: { type: string, format: uri, maxLength: 500 }
+    TargetVerification:
+      type: object
+      required: [status, checkedAt]
+      properties:
+        status: { $ref: '#/components/schemas/TargetUrlStatus' }
+        checkedAt: { type: string, format: date-time }
+        message: { type: [string, 'null'] }
+    Document:
+      type: object
+      required: [id, projectId, type, version, isActive, originalFilename, contentType, sizeBytes, status, indexProgress, summary, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        projectId: { type: string, format: uuid }
+        type: { $ref: '#/components/schemas/DocumentType' }
+        version: { type: integer, minimum: 1 }
+        isActive: { type: boolean }
+        originalFilename: { type: string }
+        contentType: { type: string }
+        sizeBytes: { type: integer, format: int64 }
+        status: { $ref: '#/components/schemas/DocumentStatus' }
+        indexProgress: { type: integer, minimum: 0, maximum: 100 }
+        summary:
+          type: object
+          description: 'UI-01 행 설명에 표시. 예: 요구사항 42개, 엔드포인트 18개, 계정 12개'
+          additionalProperties: { type: integer }
+        errorMessage: { type: [string, 'null'] }
+        createdAt: { type: string, format: date-time }
+    DownloadLink:
+      type: object
+      required: [url, expiresAt]
+      properties:
+        url: { type: string, format: uri }
+        expiresAt: { type: string, format: date-time }
+    ReadinessItem:
+      type: object
+      required: [key, label, satisfied]
+      properties:
+        key: { type: string, examples: [TARGET_REACHABLE, REQUIREMENT_ID_FORMAT, READ_ONLY_QUERY_API, CATALOG_TESTID_MAPPED] }
+        label: { type: string }
+        satisfied: { type: boolean }
+    KnowledgeBase:
+      type: object
+      required: [projectId, status, chunkCount, requirementCount, apiCount, uiElementCount, readiness, missingDocumentTypes, canBuild]
+      properties:
+        projectId: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/KnowledgeBaseStatus' }
+        chunkCount: { type: integer }
+        requirementCount: { type: integer }
+        apiCount: { type: integer }
+        uiElementCount: { type: integer }
+        lastSyncedAt: { type: [string, 'null'], format: date-time }
+        errorMessage: { type: [string, 'null'] }
+        readiness:
+          type: array
+          description: UI-01 "등록 요건" 체크리스트
+          items: { $ref: '#/components/schemas/ReadinessItem' }
+        missingDocumentTypes:
+          type: array
+          items: { $ref: '#/components/schemas/DocumentType' }
+        canBuild: { type: boolean }
+    Activity:
+      type: object
+      required: [id, message, createdAt]
+      properties:
+        id: { type: integer, format: int64 }
+        message: { type: string }
+        createdAt: { type: string, format: date-time }
+    TestRequestCreate:
+      type: object
+      required: [text]
+      properties:
+        text: { type: string, minLength: 1, maxLength: 500 }
+    RetrievedReference:
+      type: object
+      required: [sourceType, sourceId, excerpt, score]
+      properties:
+        sourceType: { $ref: '#/components/schemas/DocumentType' }
+        sourceId: { type: string, examples: [FR-CART-03] }
+        title: { type: [string, 'null'] }
+        excerpt: { type: string }
+        score: { type: number, minimum: 0, maximum: 1 }
+    RequestCandidate:
+      type: object
+      required: [id, order, refinedText, references]
+      properties:
+        id: { type: string, format: uuid }
+        order: { type: integer }
+        refinedText: { type: string }
+        references:
+          type: array
+          items: { $ref: '#/components/schemas/RetrievedReference' }
+    TestRequest:
+      type: object
+      required: [id, code, projectId, rawText, status, candidates, scenarioCount, testCaseCount, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string, examples: [REQ-0142] }
+        projectId: { type: string, format: uuid }
+        rawText: { type: string }
+        status: { $ref: '#/components/schemas/TestRequestStatus' }
+        selectionSource:
+          oneOf:
+            - $ref: '#/components/schemas/SelectionSource'
+            - type: 'null'
+        selectedText: { type: [string, 'null'] }
+        candidates:
+          type: array
+          items: { $ref: '#/components/schemas/RequestCandidate' }
+        scenarioCount: { type: integer, description: 생성 완료 모달의 시나리오 수 }
+        testCaseCount: { type: integer, description: 생성 완료 모달의 테스트 케이스 수 }
+        errorMessage: { type: [string, 'null'] }
+        createdAt: { type: string, format: date-time }
+    SelectionRequest:
+      type: object
+      description: candidateId와 customText 중 하나만 보낸다.
+      oneOf:
+        - type: object
+          required: [candidateId]
+          properties:
+            candidateId: { type: string, format: uuid }
+        - type: object
+          required: [customText]
+          properties:
+            customText: { type: string, minLength: 1, maxLength: 500 }
+    GuardState:
+      type: object
+      required: [attempt, maxAttempts]
+      properties:
+        attempt: { type: integer, minimum: 0, maximum: 3 }
+        maxAttempts: { type: integer, const: 3 }
+        message: { type: [string, 'null'], description: "예: 카탈로그에 'cart-remove-button' 요소가 없어 재생성 중" }
+    TestCase:
+      type: object
+      required: [id, code, scenarioId, title, type, scopes, expectedResult, order, version]
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string, examples: [TC-12] }
+        scenarioId: { type: string, format: uuid }
+        title: { type: string }
+        type: { $ref: '#/components/schemas/TestCaseType' }
+        scopes:
+          type: array
+          items: { $ref: '#/components/schemas/VerificationScope' }
+        preconditions:
+          type: array
+          items: { type: string }
+        steps:
+          type: array
+          items: { type: string }
+        expectedResult: { type: string }
+        order: { type: integer }
+        version: { type: integer }
+    TestCaseUpdate:
+      type: object
+      properties:
+        title: { type: string, minLength: 1, maxLength: 200 }
+        type: { $ref: '#/components/schemas/TestCaseType' }
+        scopes:
+          type: array
+          items: { $ref: '#/components/schemas/VerificationScope' }
+        preconditions:
+          type: array
+          items: { type: string }
+        steps:
+          type: array
+          items: { type: string }
+        expectedResult: { type: string, minLength: 1 }
+    Scenario:
+      type: object
+      required: [id, code, testRequestId, title, scopes, status, guard, version, testCases, caseCount]
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string, examples: [SC-01] }
+        testRequestId: { type: string, format: uuid }
+        title: { type: string }
+        requirementRef: { type: [string, 'null'], examples: [FR-CART-01] }
+        scopes:
+          type: array
+          items: { $ref: '#/components/schemas/VerificationScope' }
+        status: { $ref: '#/components/schemas/ScenarioStatus' }
+        guard: { $ref: '#/components/schemas/GuardState' }
+        references:
+          type: array
+          items: { $ref: '#/components/schemas/RetrievedReference' }
+        version: { type: integer }
+        approvedAt: { type: [string, 'null'], format: date-time }
+        caseCount: { type: integer }
+        testCases:
+          type: array
+          items: { $ref: '#/components/schemas/TestCase' }
+    ScenarioUpdate:
+      type: object
+      properties:
+        title: { type: string, minLength: 1, maxLength: 200 }
+        requirementRef: { type: string, maxLength: 50 }
+        scopes:
+          type: array
+          items: { $ref: '#/components/schemas/VerificationScope' }
+    ScenarioList:
+      type: object
+      required: [testRequest, summary, items]
+      properties:
+        testRequest: { $ref: '#/components/schemas/TestRequest' }
+        summary:
+          type: object
+          required: [total, approved, reviewRequired, guardRetry]
+          properties:
+            total: { type: integer }
+            approved: { type: integer }
+            reviewRequired: { type: integer }
+            guardRetry: { type: integer }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Scenario' }
+    RunCreate:
+      type: object
+      required: [scenarioIds]
+      properties:
+        scenarioIds:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: { type: string, format: uuid }
+    RerunRequest:
+      type: object
+      description: caseResultIds를 비우면 실패한 케이스 전체를 재실행한다.
+      properties:
+        caseResultIds:
+          type: array
+          uniqueItems: true
+          items: { type: string, format: uuid }
+    Run:
+      type: object
+      required: [id, code, projectId, testRequestId, status, targetUrl, browser, viewportWidth, viewportHeight, documentVersions, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string, examples: [RUN-0318] }
+        projectId: { type: string, format: uuid }
+        testRequestId: { type: string, format: uuid }
+        rerunOfRunId: { type: [string, 'null'], format: uuid }
+        status: { $ref: '#/components/schemas/RunStatus' }
+        targetUrl: { type: string, format: uri }
+        targetBuild: { type: [string, 'null'] }
+        browser: { type: string, examples: [Chromium] }
+        viewportWidth: { type: integer }
+        viewportHeight: { type: integer }
+        documentVersions:
+          type: object
+          additionalProperties: { type: integer }
+        startedBy:
+          oneOf:
+            - $ref: '#/components/schemas/User'
+            - type: 'null'
+        errorMessage: { type: [string, 'null'] }
+        createdAt: { type: string, format: date-time }
+        startedAt: { type: [string, 'null'], format: date-time }
+        finishedAt: { type: [string, 'null'], format: date-time }
+    RunStep:
+      type: object
+      required: [id, order, attempt, kind, title, status]
+      properties:
+        id: { type: string, format: uuid }
+        order: { type: integer }
+        attempt: { type: integer }
+        kind: { $ref: '#/components/schemas/StepKind' }
+        title: { type: string }
+        status: { $ref: '#/components/schemas/StepStatus' }
+        detail: { type: [string, 'null'] }
+        expectedValue: { type: [string, 'null'] }
+        actualValue: { type: [string, 'null'] }
+    CaseRunSummary:
+      type: object
+      required: [id, testCaseId, code, title, status, attempts, failedAttempts]
+      properties:
+        id: { type: string, format: uuid }
+        testCaseId: { type: string, format: uuid }
+        code: { type: string, examples: [TC-12] }
+        title: { type: string }
+        status: { $ref: '#/components/schemas/CaseResultStatus' }
+        attempts: { type: integer }
+        failedAttempts: { type: integer }
+        durationMs: { type: [integer, 'null'], format: int64 }
+        steps:
+          type: array
+          description: 현재 또는 마지막 시도의 단계. UI-03 진행 목록에 사용한다.
+          items: { $ref: '#/components/schemas/RunStep' }
+    ScenarioRun:
+      type: object
+      required: [id, scenarioId, code, title, order, status, cases]
+      properties:
+        id: { type: string, format: uuid }
+        scenarioId: { type: string, format: uuid }
+        code: { type: string, examples: [SC-03] }
+        title: { type: string }
+        requirementRef: { type: [string, 'null'] }
+        order: { type: integer }
+        status: { $ref: '#/components/schemas/ScenarioRunStatus' }
+        durationMs: { type: [integer, 'null'], format: int64 }
+        cases:
+          type: array
+          items: { $ref: '#/components/schemas/CaseRunSummary' }
+    RunDetail:
+      allOf:
+        - $ref: '#/components/schemas/Run'
+        - type: object
+          required: [progress, scenarioRuns, lastEventSeq]
+          properties:
+            progress:
+              type: object
+              required: [totalScenarios, finishedScenarios, passed, failed, running, waiting]
+              properties:
+                totalScenarios: { type: integer }
+                finishedScenarios: { type: integer }
+                passed: { type: integer }
+                failed: { type: integer }
+                running: { type: integer }
+                waiting: { type: integer }
+            scenarioRuns:
+              type: array
+              items: { $ref: '#/components/schemas/ScenarioRun' }
+            latestScreenshotArtifactId: { type: [string, 'null'], format: uuid }
+            currentPath: { type: [string, 'null'], examples: [/checkout] }
+            lastEventSeq:
+              type: integer
+              format: int64
+              description: 이 값을 streamRunEvents의 afterSeq로 보내면 스냅샷 이후 이벤트만 받는다.
+    RunLogEntry:
+      type: object
+      required: [seq, kind, message, occurredAt]
+      properties:
+        seq: { type: integer, format: int64 }
+        kind: { $ref: '#/components/schemas/StepKind' }
+        message: { type: string }
+        occurredAt: { type: string, format: date-time }
+    ApiCall:
+      type: object
+      required: [id, method, path, occurredAt]
+      properties:
+        id: { type: integer, format: int64 }
+        method: { type: string, examples: [POST] }
+        path: { type: string, examples: [/orders] }
+        statusCode: { type: [integer, 'null'] }
+        durationMs: { type: [integer, 'null'] }
+        occurredAt: { type: string, format: date-time }
+    ReportCaseItem:
+      type: object
+      required: [caseResultId, code, title, status, attempts, failedAttempts]
+      properties:
+        caseResultId: { type: string, format: uuid }
+        code: { type: string }
+        title: { type: string }
+        status: { $ref: '#/components/schemas/CaseResultStatus' }
+        attempts: { type: integer }
+        failedAttempts: { type: integer }
+        durationMs: { type: [integer, 'null'], format: int64 }
+    ReportScenario:
+      type: object
+      required: [scenarioRunId, code, title, status, passedCases, totalCases, cases]
+      properties:
+        scenarioRunId: { type: string, format: uuid }
+        code: { type: string }
+        title: { type: string }
+        requirementRef: { type: [string, 'null'] }
+        status: { $ref: '#/components/schemas/ScenarioRunStatus' }
+        durationMs: { type: [integer, 'null'], format: int64 }
+        passedCases: { type: integer }
+        totalCases: { type: integer }
+        cases:
+          type: array
+          items: { $ref: '#/components/schemas/ReportCaseItem' }
+    RunComparison:
+      type: object
+      required: [newFailures, continuingFailures, resolved]
+      properties:
+        previousRunCode: { type: [string, 'null'], examples: [RUN-0317] }
+        newFailures:
+          type: array
+          items: { type: string, examples: [TC-12] }
+        continuingFailures:
+          type: array
+          items: { type: string }
+        resolved:
+          type: array
+          items: { type: string }
+        previousCasePassRatePct: { type: [integer, 'null'] }
+    RunReport:
+      type: object
+      required: [run, kpis, scenarios, skippedScenarios, comparison]
+      properties:
+        run: { $ref: '#/components/schemas/Run' }
+        kpis:
+          type: object
+          required: [scenariosPassed, scenariosTotal, casesPassed, casesTotal, casePassRatePct, failedCases, crossCheckMismatches, durationMs, apiCallCount]
+          properties:
+            scenariosPassed: { type: integer }
+            scenariosTotal: { type: integer }
+            casesPassed: { type: integer }
+            casesTotal: { type: integer }
+            casePassRatePct: { type: integer }
+            failedCases: { type: integer }
+            crossCheckMismatches: { type: integer }
+            durationMs: { type: integer, format: int64 }
+            apiCallCount: { type: integer }
+        scenarios:
+          type: array
+          items: { $ref: '#/components/schemas/ReportScenario' }
+        skippedScenarios:
+          type: array
+          description: 선택되지 않아 실행하지 않은 시나리오. UI-04 안내 문구에 사용한다.
+          items:
+            type: object
+            required: [code, status]
+            properties:
+              code: { type: string }
+              status: { $ref: '#/components/schemas/ScenarioStatus' }
+        comparison: { $ref: '#/components/schemas/RunComparison' }
+    Verification:
+      type: object
+      required: [order, itemLabel, verdict]
+      properties:
+        order: { type: integer }
+        itemLabel: { type: string, examples: [결제 합계 금액] }
+        uiValue: { type: [string, 'null'] }
+        apiValue: { type: [string, 'null'] }
+        dbValue: { type: [string, 'null'] }
+        verdict: { $ref: '#/components/schemas/Verdict' }
+    RootCauseCandidate:
+      type: object
+      required: [rank, description, confidencePct, evidence]
+      properties:
+        rank: { type: integer, minimum: 1 }
+        description: { type: string }
+        confidencePct: { type: integer, minimum: 0, maximum: 100 }
+        evidence:
+          type: array
+          description: 실행 로그나 API 호출 등 실제 수집한 값에 근거한 문장
+          items: { type: string }
+        remediation: { type: [string, 'null'] }
+    ArtifactRef:
+      type: object
+      required: [id, type, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        type: { $ref: '#/components/schemas/ArtifactType' }
+        label: { type: [string, 'null'] }
+        sizeBytes: { type: [integer, 'null'], format: int64 }
+        createdAt: { type: string, format: date-time }
+    CaseResultDetail:
+      type: object
+      required: [id, code, title, scenarioCode, scenarioTitle, status, attempts, failedAttempts, affectedFeatures, verifications, reproductionSteps, rootCauses, artifacts]
+      properties:
+        id: { type: string, format: uuid }
+        code: { type: string }
+        title: { type: string }
+        scenarioCode: { type: string }
+        scenarioTitle: { type: string }
+        requirementRef: { type: [string, 'null'] }
+        status: { $ref: '#/components/schemas/CaseResultStatus' }
+        attempts: { type: integer }
+        failedAttempts: { type: integer }
+        durationMs: { type: [integer, 'null'], format: int64 }
+        severity:
+          oneOf:
+            - $ref: '#/components/schemas/Severity'
+            - type: 'null'
+        failureType:
+          oneOf:
+            - $ref: '#/components/schemas/FailureType'
+            - type: 'null'
+        failureMessage: { type: [string, 'null'] }
+        affectedFeatures:
+          type: array
+          items: { type: string }
+        firstSeenRunCode: { type: [string, 'null'] }
+        verifications:
+          type: array
+          items: { $ref: '#/components/schemas/Verification' }
+        reproductionSteps:
+          type: array
+          items: { $ref: '#/components/schemas/RunStep' }
+        rootCauses:
+          type: array
+          items: { $ref: '#/components/schemas/RootCauseCandidate' }
+        artifacts:
+          type: array
+          items: { $ref: '#/components/schemas/ArtifactRef' }
+    GeneratedSpec:
+      type: object
+      required: [testCaseCode, fileName, source, rendererVersion, compileStatus]
+      properties:
+        testCaseCode: { type: string }
+        fileName: { type: string, examples: [tc-12.spec.ts] }
+        source: { type: string }
+        rendererVersion: { type: string }
+        compileStatus: { $ref: '#/components/schemas/CompileStatus' }
+        compileError: { type: [string, 'null'] }

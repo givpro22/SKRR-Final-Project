@@ -1,0 +1,13 @@
+.DS_Store
+
+# 비밀값
+.env
+.env.*
+!.env.example
+
+# 하네스 실행 중간 산출물
+_workspace/
+_workspace_*/
+
+# Python 캐시 (검증 스크립트)
+__pycache__/

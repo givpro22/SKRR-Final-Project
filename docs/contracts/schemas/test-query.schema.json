@@ -1,0 +1,226 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skrr.dev/contracts/test-query.schema.json",
+  "title": "TestQuery",
+  "description": "테스트 케이스 1건의 실행 정의. AI 서버가 생성하고 실행기가 Playwright spec으로 변환한다. LLM이 임의 코드를 쓰지 못하도록 허용된 동작만 정의한다.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "testCaseCode", "title", "steps"],
+  "properties": {
+    "schemaVersion": { "const": "1.0" },
+    "testCaseCode": { "type": "string", "pattern": "^TC-[0-9]{2,4}$" },
+    "title": { "type": "string", "minLength": 1, "maxLength": 200 },
+    "variables": {
+      "description": "steps에서 {{name}} 형식으로 참조하는 테스트 데이터 값.",
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 100,
+      "items": { "$ref": "#/$defs/step" }
+    },
+    "dbChecks": {
+      "description": "백엔드가 테스트 전후로 수행하는 읽기 전용 조회 검증. 실행기는 처리하지 않는다.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/dbCheck" }
+    },
+    "crossChecks": {
+      "description": "UI-04의 화면·API·DB 교차 검증 표 1행을 만드는 정의.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/crossCheck" }
+    }
+  },
+  "$defs": {
+    "stepBase": {
+      "type": "object",
+      "required": ["id", "description"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,39}$" },
+        "description": { "type": "string", "minLength": 1, "maxLength": 300 }
+      }
+    },
+    "testId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,99}$" },
+    "captureName": { "type": "string", "pattern": "^[a-z][a-zA-Z0-9_]{0,39}$" },
+    "sameOriginPath": { "type": "string", "pattern": "^/(?!/)" },
+    "httpMethod": { "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"] },
+    "step": {
+      "oneOf": [
+        { "$ref": "#/$defs/gotoStep" },
+        { "$ref": "#/$defs/clickStep" },
+        { "$ref": "#/$defs/fillStep" },
+        { "$ref": "#/$defs/selectOptionStep" },
+        { "$ref": "#/$defs/expectVisibleStep" },
+        { "$ref": "#/$defs/expectTextStep" },
+        { "$ref": "#/$defs/expectCountStep" },
+        { "$ref": "#/$defs/captureTextStep" },
+        { "$ref": "#/$defs/waitForApiStep" },
+        { "$ref": "#/$defs/apiRequestStep" },
+        { "$ref": "#/$defs/expectCaptureStep" }
+      ]
+    },
+    "gotoStep": {
+      "allOf": [{ "$ref": "#/$defs/stepBase" }],
+      "required": ["action", "path"],
+      "properties": {
+        "id": true, "description": true,
+        "action": { "const": "goto" },
+        "path": { "$ref": "#/$defs/sameOriginPath" }
+      },
+      "unevaluatedProperties": false
+    },
+    "clickStep": {
+      "allOf": [{ "$ref": "#/$defs/stepBase" }],
+      "required": ["action", "testId"],
+      "properties": {
+        "id": true, "description": true,
+        "action": { "const": "click" },
+        "testId": { "$ref": "#/$defs/testId" }
+      },
+      "unevaluatedProperties": false
+    },
+    "fillStep": {
+      "allOf": [{ "$ref": "#/$defs/stepBase" }],
+      "required": ["action", "testId", "value"],
+      "properties": {
+        "id": true, "description": true,
+        "action": { "const": "fill" },
+        "testId": { "$ref": "#/$defs/testId" },
+        "value": { "type": "string" }
+      },
+      "unevaluatedProperties": false
+    },
+    "selectOptionStep": {
+      "allOf": [{ "$ref": "#/$defs/stepBase" }],
+      "required": ["action", "testId", "value"],
+      "properties": {
+        "id": true, "description": true,
+        "action": { "const": "selectOption" },
+        "testId": { "$ref": "#/$defs/testId" },
+        "value": { "type": "string" }
+      },
+      "unevaluatedProperties": false
+    },
+    "expectVisibleStep": {
+      "allOf": [{ "$ref": "#/$defs/stepBase" }],
+      "required": ["action", "testId"],
+      "properties": {
+        "id": true, "description": true,
+        "action": { "const": "expectVisible" },
+        "testId": { "$ref": "#/$defs/testId" },
+        "visible": { "type": "boolean", "default": true }
+      },
+      "unevaluatedProperties": false
+    },
+    "expectTextStep": {
+      "allOf": [{ "$ref": "#/$defs/stepBase" }],
+      "required": ["action", "testId", "text"],
+      "properties": {
+        "id": true, "description": true,
+        "action": { "const": "expectText" },
+        "testId": { "$ref": "#/$defs/testId" },
+        "text": { "type": "string" },
+        "match": { "enum": ["EXACT", "CONTAINS"], "default": "CONTAINS" }
+      },
+      "unevaluatedProperties": false
+    },
+    "expectCountStep": {
+      "allOf": [{ "$ref": "#/$defs/stepBase" }],
+      "required": ["action", "testId", "count"],
+      "properties": {
+        "id": true, "description": true,
+        "action": { "const": "expectCount" },
+        "testId": { "$ref": "#/$defs/testId" },
+        "count": { "type": "integer", "minimum": 0 }
+      },
+      "unevaluatedProperties": false
+    },
+    "captureTextStep": {
+      "allOf": [{ "$ref": "#/$defs/stepBase" }],
+      "required": ["action", "testId", "as"],
+      "properties": {
+        "id": true, "description": true,
+        "action": { "const": "captureText" },
+        "testId": { "$ref": "#/$defs/testId" },
+        "as": { "$ref": "#/$defs/captureName" }
+      },
+      "unevaluatedProperties": false
+    },
+    "waitForApiStep": {
+      "description": "직전 화면 동작이 일으킨 업무 API 응답을 기다려 값을 캡처한다.",
+      "allOf": [{ "$ref": "#/$defs/stepBase" }],
+      "required": ["action", "method", "path", "trigger"],
+      "properties": {
+        "id": true, "description": true,
+        "action": { "const": "waitForApi" },
+        "method": { "$ref": "#/$defs/httpMethod" },
+        "path": { "$ref": "#/$defs/sameOriginPath" },
+        "trigger": { "$ref": "#/$defs/testId" },
+        "expectStatus": { "type": "integer", "minimum": 100, "maximum": 599 },
+        "captures": { "$ref": "#/$defs/jsonCaptures" }
+      },
+      "unevaluatedProperties": false
+    },
+    "apiRequestStep": {
+      "allOf": [{ "$ref": "#/$defs/stepBase" }],
+      "required": ["action", "method", "path"],
+      "properties": {
+        "id": true, "description": true,
+        "action": { "const": "apiRequest" },
+        "method": { "$ref": "#/$defs/httpMethod" },
+        "path": { "$ref": "#/$defs/sameOriginPath" },
+        "body": {},
+        "expectStatus": { "type": "integer", "minimum": 100, "maximum": 599 },
+        "captures": { "$ref": "#/$defs/jsonCaptures" }
+      },
+      "unevaluatedProperties": false
+    },
+    "expectCaptureStep": {
+      "allOf": [{ "$ref": "#/$defs/stepBase" }],
+      "required": ["action", "capture", "equals"],
+      "properties": {
+        "id": true, "description": true,
+        "action": { "const": "expectCapture" },
+        "capture": { "$ref": "#/$defs/captureName" },
+        "equals": { "type": "string" }
+      },
+      "unevaluatedProperties": false
+    },
+    "jsonCaptures": {
+      "description": "캡처 이름 → JSONPath 대응. 예: {\"apiTotal\": \"$.total\"}",
+      "type": "object",
+      "propertyNames": { "$ref": "#/$defs/captureName" },
+      "additionalProperties": { "type": "string", "pattern": "^\\$" }
+    },
+    "dbCheck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label", "phase", "path", "jsonPath"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,39}$" },
+        "label": { "type": "string" },
+        "phase": { "enum": ["BEFORE", "AFTER"] },
+        "path": { "$ref": "#/$defs/sameOriginPath" },
+        "jsonPath": { "type": "string", "pattern": "^\\$" },
+        "expected": { "type": "string" }
+      }
+    },
+    "crossCheck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["label"],
+      "properties": {
+        "label": { "type": "string" },
+        "uiCapture": { "$ref": "#/$defs/captureName" },
+        "apiCapture": { "$ref": "#/$defs/captureName" },
+        "dbCheckId": { "type": "string" },
+        "normalize": {
+          "description": "비교 전 값 정규화. 예: ₩87,400과 87400을 같은 값으로 본다.",
+          "enum": ["NONE", "NUMBER", "CURRENCY"],
+          "default": "NONE"
+        }
+      }
+    }
+  }
+}
