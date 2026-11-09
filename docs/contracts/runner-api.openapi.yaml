@@ -1,0 +1,274 @@
+openapi: 3.1.0
+info:
+  title: SKRR Playwright 실행기 내부 API
+  version: 0.1.0
+  description: |
+    백엔드 ↔ 실행기 계약 초안. 클러스터 내부 전용이며 백엔드만 호출할 수 있다.
+    실행기는 임의 코드를 받지 않는다. TestQuery를 받아 직접 spec으로 변환해 실행하므로,
+    LLM 출력이 코드로 곧장 실행되는 경로가 없다.
+    DB 자격 증명과 AWS 키를 갖지 않으며, 실행 증거는 백엔드가 준 presigned URL로 올린다.
+servers:
+  - url: /internal/v1
+paths:
+  /healthz:
+    get:
+      operationId: runnerHealth
+      summary: 프로세스 생존 확인
+      responses:
+        '200': { description: 정상 }
+  /readyz:
+    get:
+      operationId: runnerReady
+      summary: 실행 가능 여부 (브라우저 기동 가능, 유휴 상태)
+      responses:
+        '200': { description: 준비됨 }
+        '503': { description: 준비 안 됨 }
+  /connectivity-checks:
+    post:
+      operationId: checkTargetConnectivity
+      summary: 대상 사이트 접속 확인 (UI-01)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [targetUrl]
+              properties:
+                targetUrl: { type: string, format: uri }
+      responses:
+        '200':
+          description: 확인 결과
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [reachable]
+                properties:
+                  reachable: { type: boolean }
+                  statusCode: { type: [integer, 'null'] }
+                  message: { type: [string, 'null'] }
+  /specs/render:
+    post:
+      operationId: renderSpec
+      summary: TestQuery를 Playwright TypeScript spec으로 변환하고 문법 검사 (FR-04, WBS 4.6.1)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [testQuery]
+              properties:
+                testQuery: { $ref: './schemas/test-query.schema.json' }
+      responses:
+        '200':
+          description: 변환 결과. 문법 오류도 200으로 반환하고 compileStatus로 구분한다.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RenderResult' }
+        '422':
+          description: TestQuery 스키마 위반
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+  /executions:
+    post:
+      operationId: startExecution
+      summary: 테스트 케이스 1회 실행 (WBS 4.6.2)
+      description: 실행기는 한 번에 하나만 실행한다. 실행 중이면 409 RUNNER_BUSY를 반환한다.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ExecutionRequest' }
+      responses:
+        '202':
+          description: 실행 시작
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Execution' }
+        '409':
+          description: 다른 실행 진행 중
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '422':
+          description: TestQuery 스키마 위반 또는 허용되지 않은 대상 URL
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+  /executions/{executionId}:
+    parameters:
+      - name: executionId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getExecution
+      summary: 실행 상태와 최종 결과
+      responses:
+        '200':
+          description: 실행
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Execution' }
+        '404': { description: 실행 없음 }
+  /executions/{executionId}/events:
+    parameters:
+      - name: executionId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: streamExecutionEvents
+      summary: 실행 이벤트 SSE. 백엔드가 받아 run_event로 저장한 뒤 프론트에 전달한다.
+      responses:
+        '200':
+          description: 이벤트 스트림. 이벤트 형식은 ExecutionEvent
+          content:
+            text/event-stream:
+              schema: { $ref: '#/components/schemas/ExecutionEvent' }
+        '404': { description: 실행 없음 }
+  /executions/{executionId}/cancel:
+    parameters:
+      - name: executionId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: cancelExecution
+      summary: 실행 중단 (브라우저 종료까지 10초 이내)
+      responses:
+        '202': { description: 중단 요청됨 }
+        '404': { description: 실행 없음 }
+components:
+  schemas:
+    Problem:
+      type: object
+      required: [title, status]
+      properties:
+        title: { type: string }
+        status: { type: integer }
+        code: { type: string, examples: [RUNNER_BUSY, INVALID_TEST_QUERY, TARGET_NOT_ALLOWED] }
+        detail: { type: string }
+    CompileStatus: { type: string, enum: [PASSED, FAILED] }
+    ExecutionStatus: { type: string, enum: [QUEUED, RUNNING, PASSED, FAILED, ERROR, CANCELLED] }
+    StepKind: { type: string, enum: [SETUP, UI, API, DB, ASSERT, TEARDOWN] }
+    StepStatus: { type: string, enum: [PENDING, RUNNING, PASSED, FAILED, SKIPPED] }
+    SchemaCheckStatus: { type: string, enum: [PASSED, FAILED, NOT_CHECKED] }
+    FailureType:
+      type: string
+      enum: [DATA_MISMATCH, ASSERTION_FAILED, ELEMENT_NOT_FOUND, API_ERROR, API_SCHEMA_MISMATCH, TIMEOUT, ENVIRONMENT_ERROR, TEST_CODE_ERROR]
+    RenderResult:
+      type: object
+      required: [specSource, fileName, rendererVersion, compileStatus]
+      properties:
+        specSource: { type: string }
+        fileName: { type: string, examples: [tc-12.spec.ts] }
+        rendererVersion: { type: string }
+        compileStatus: { $ref: '#/components/schemas/CompileStatus' }
+        compileErrors:
+          type: array
+          items: { type: string }
+    ExecutionRequest:
+      type: object
+      required: [executionId, baseUrl, testQuery, viewport, timeoutMs, uploads]
+      properties:
+        executionId: { type: string, format: uuid }
+        baseUrl:
+          type: string
+          format: uri
+          description: RUNNER_ALLOWED_TARGET_HOSTS에 있는 호스트만 허용한다.
+        testQuery: { $ref: './schemas/test-query.schema.json' }
+        secretVariables:
+          type: object
+          description: 테스트 계정 비밀번호처럼 로그와 spec에 남기면 안 되는 값
+          additionalProperties: { type: string }
+        viewport:
+          type: object
+          required: [width, height]
+          properties:
+            width: { type: integer, default: 1280 }
+            height: { type: integer, default: 800 }
+        timeoutMs: { type: integer, minimum: 1000, maximum: 300000, default: 120000 }
+        uploads:
+          type: object
+          description: 백엔드가 발급한 S3 presigned PUT URL. stepScreenshots는 step 수만큼 준다.
+          required: [trace, har, stepScreenshots]
+          properties:
+            trace: { type: string, format: uri }
+            har: { type: string, format: uri }
+            stepScreenshots:
+              type: array
+              items: { type: string, format: uri }
+    StepResult:
+      type: object
+      required: [stepId, order, kind, title, status]
+      properties:
+        stepId: { type: string }
+        order: { type: integer }
+        kind: { $ref: '#/components/schemas/StepKind' }
+        title: { type: string }
+        status: { $ref: '#/components/schemas/StepStatus' }
+        detail: { type: string }
+        expectedValue: { type: string }
+        actualValue: { type: string }
+        schemaCheck:
+          $ref: '#/components/schemas/SchemaCheckStatus'
+          description: API 단계에만 있다. responseSchema가 없으면 NOT_CHECKED다.
+        schemaErrors:
+          type: array
+          description: 예 `$.items[0].qty 는 integer여야 함 (실제 string)`
+          items: { type: string }
+        durationMs: { type: integer }
+    ApiCallRecord:
+      type: object
+      required: [method, path]
+      properties:
+        method: { type: string }
+        path: { type: string }
+        statusCode: { type: integer }
+        durationMs: { type: integer }
+        occurredAt: { type: string, format: date-time }
+    Execution:
+      type: object
+      required: [executionId, status]
+      properties:
+        executionId: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/ExecutionStatus' }
+        durationMs: { type: integer }
+        failureType:
+          oneOf:
+            - $ref: '#/components/schemas/FailureType'
+            - type: 'null'
+        failureMessage: { type: [string, 'null'] }
+        steps:
+          type: array
+          items: { $ref: '#/components/schemas/StepResult' }
+        apiCalls:
+          type: array
+          items: { $ref: '#/components/schemas/ApiCallRecord' }
+        captures:
+          type: object
+          description: TestQuery의 as, captures로 수집한 값. 교차 검증에 쓴다. secretCaptures에 있는 값은 넣지 않는다.
+          additionalProperties: { type: string }
+        consoleErrors:
+          type: array
+          items: { type: string }
+        uploadedArtifacts:
+          type: array
+          items:
+            type: object
+            required: [kind, url]
+            properties:
+              kind: { type: string, enum: [TRACE, HAR, SCREENSHOT] }
+              url: { type: string, format: uri }
+              stepId: { type: string }
+    ExecutionEvent:
+      type: object
+      required: [type, occurredAt, data]
+      properties:
+        type: { type: string, enum: [status, step, api.call, screenshot, log] }
+        occurredAt: { type: string, format: date-time }
+        data: { type: object }
