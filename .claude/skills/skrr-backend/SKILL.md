@@ -80,7 +80,9 @@ Spring 스레드 풀에서 실행하며, 프로젝트당 진행 중인 실행은
 
 - 중단 요청은 단계 사이에서 확인하고, 실행 중이면 `cancelExecution`을 호출한다.
 - `dbChecks`는 `queryApiBaseUrl` 기준 **GET만** 수행한다.
-- 교차 검증은 `normalize` 규칙을 적용해 비교한다 (`₩87,400` = `87400`). 값을 얻지 못한 칸은 `null`이며 일치로 처리하지 않는다.
+- 교차 검증은 `normalize` 규칙을 적용해 비교한다 (`₩87,400` = `87400`). 판정 규칙은 `state-machines.md`의 표를 따른다. 값을 얻지 못한 칸은 `null`이며 일치로 처리하지 않는다. 세 값이 같아도 `expected`와 다르면 불일치다.
+- 실행기의 `schemaCheck`를 `run_step`에 저장하고, `schemaErrors`는 `detail`에 넣는다. `NOT_CHECKED`를 통과로 집계하지 않는다.
+- `crossChecks.expected`의 `{{이름}}`은 TEST_DATA 값으로 채운다. 비밀값은 `verification`에 저장하지 않는다.
 - 판정은 수집한 값으로 계산한다. AI 분석은 원인 후보만 제공한다.
 - 실행기나 AI 장애는 `ERROR`이고 테스트 실패는 `FAILED`다. 구분이 무너지면 오탐률 평가가 틀어진다.
 
@@ -110,6 +112,7 @@ Spring 스레드 풀에서 실행하며, 프로젝트당 진행 중인 실행은
 | API, DB | `@SpringBootTest` + Testcontainers |
 | AI, 실행기, 대상 사이트 | WireMock으로 계약 응답과 오류, 시간 초과 재현 |
 | 실행 제어 | 정상, 실패 재현 3회, 중단, 실행기 장애(`ERROR`), 정리 단계 실행 보장 |
+| 교차 검증 | 판정 표의 모든 행, 특히 세 값이 같고 기대값만 다른 경우 |
 | SSE | 재연결 복구, 중복 없음 |
 
 ## 완료 전 검증

@@ -132,6 +132,7 @@ erDiagram
         smallint attempt
         varchar kind
         varchar status
+        varchar schema_check
     }
     verification {
         uuid id PK
@@ -140,6 +141,7 @@ erDiagram
         text ui_value
         text api_value
         text db_value
+        text expected_value
         varchar verdict
     }
     root_cause_candidate {

@@ -156,9 +156,10 @@ components:
     ExecutionStatus: { type: string, enum: [QUEUED, RUNNING, PASSED, FAILED, ERROR, CANCELLED] }
     StepKind: { type: string, enum: [SETUP, UI, API, DB, ASSERT, TEARDOWN] }
     StepStatus: { type: string, enum: [PENDING, RUNNING, PASSED, FAILED, SKIPPED] }
+    SchemaCheckStatus: { type: string, enum: [PASSED, FAILED, NOT_CHECKED] }
     FailureType:
       type: string
-      enum: [DATA_MISMATCH, ASSERTION_FAILED, ELEMENT_NOT_FOUND, API_ERROR, TIMEOUT, ENVIRONMENT_ERROR, TEST_CODE_ERROR]
+      enum: [DATA_MISMATCH, ASSERTION_FAILED, ELEMENT_NOT_FOUND, API_ERROR, API_SCHEMA_MISMATCH, TIMEOUT, ENVIRONMENT_ERROR, TEST_CODE_ERROR]
     RenderResult:
       type: object
       required: [specSource, fileName, rendererVersion, compileStatus]
@@ -213,6 +214,13 @@ components:
         detail: { type: string }
         expectedValue: { type: string }
         actualValue: { type: string }
+        schemaCheck:
+          $ref: '#/components/schemas/SchemaCheckStatus'
+          description: API 단계에만 있다. responseSchema가 없으면 NOT_CHECKED다.
+        schemaErrors:
+          type: array
+          description: 예 `$.items[0].qty 는 integer여야 함 (실제 string)`
+          items: { type: string }
         durationMs: { type: integer }
     ApiCallRecord:
       type: object
@@ -243,7 +251,7 @@ components:
           items: { $ref: '#/components/schemas/ApiCallRecord' }
         captures:
           type: object
-          description: TestQuery의 as, captures로 수집한 값. 교차 검증에 쓴다.
+          description: TestQuery의 as, captures로 수집한 값. 교차 검증에 쓴다. secretCaptures에 있는 값은 넣지 않는다.
           additionalProperties: { type: string }
         consoleErrors:
           type: array

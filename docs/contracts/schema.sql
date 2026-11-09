@@ -199,7 +199,7 @@ CREATE TABLE case_result (
     failed_attempts     SMALLINT NOT NULL DEFAULT 0,  -- UI-04 재현: "3회 중 3회"
     duration_ms         BIGINT,
     severity            VARCHAR(20) CHECK (severity IN ('LOW','MEDIUM','HIGH','CRITICAL')), -- enum:Severity
-    failure_type        VARCHAR(30) CHECK (failure_type IN ('DATA_MISMATCH','ASSERTION_FAILED','ELEMENT_NOT_FOUND','API_ERROR','TIMEOUT','ENVIRONMENT_ERROR','TEST_CODE_ERROR')), -- enum:FailureType
+    failure_type        VARCHAR(30) CHECK (failure_type IN ('DATA_MISMATCH','ASSERTION_FAILED','ELEMENT_NOT_FOUND','API_ERROR','API_SCHEMA_MISMATCH','TIMEOUT','ENVIRONMENT_ERROR','TEST_CODE_ERROR')), -- enum:FailureType
     failure_message     TEXT,
     failure_fingerprint VARCHAR(64),                  -- 이전 실행 대비(새로운 실패/계속 실패) 비교용
     affected_features   TEXT[] NOT NULL DEFAULT '{}',
@@ -218,6 +218,7 @@ CREATE TABLE run_step (
     detail          TEXT,
     expected_value  TEXT,
     actual_value    TEXT,
+    schema_check    VARCHAR(20) CHECK (schema_check IN ('PASSED','FAILED','NOT_CHECKED')), -- enum:SchemaCheckStatus
     started_at      TIMESTAMPTZ,
     finished_at     TIMESTAMPTZ,
     UNIQUE (case_result_id, attempt, ord)
@@ -232,6 +233,7 @@ CREATE TABLE verification (
     ui_value        TEXT,
     api_value       TEXT,
     db_value        TEXT,
+    expected_value  TEXT,                 -- 없으면 값이 서로 같은지만 확인한 항목
     verdict         VARCHAR(20) NOT NULL CHECK (verdict IN ('MATCH','MISMATCH','NOT_APPLICABLE')), -- enum:Verdict
     UNIQUE (case_result_id, ord)
 );

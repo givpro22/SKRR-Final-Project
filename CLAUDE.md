@@ -16,3 +16,4 @@ AI 기반 통합 테스트 자동화 및 오류 분석 시스템. 프로젝트 �
 | 2026-11-09 | 실행기를 별도 Node 서버로 확정 | harness/context, docs/decisions.md | 사용자 결정 |
 | 2026-11-09 | MVP 범위 확정: 로그인 없음, GitHub 입력 제외, PDF는 MVP 이후, 실행 비교 포함 | skills/skrr-frontend, skills/skrr-backend, harness/context, docs | 사용자 결정 |
 | 2026-11-09 | 코드 저장소를 이 저장소로 확정 | harness/context, docs/decisions.md | 사용자 결정 |
+| 2026-11-09 | API 검사 강화: 인증 헤더, 응답 구조 검사, 기대값 필수 | docs/contracts, skills/skrr-ai-pipeline, skills/skrr-backend, skills/skrr-integration-qa, harness/context | 사용자 요청. 토큰 방식 테스트 불가 등 빈틈 발견 |

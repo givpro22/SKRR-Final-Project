@@ -86,3 +86,27 @@ CaseResult:  PENDING → RUNNING → PASSED | FAILED | ERROR | CANCELLED
 ```
 
 중간 단계가 실패해도 정리 단계는 수행한다. 다음 케이스의 사전조건이 오염되지 않게 하기 위해서다.
+
+## API 검사와 교차 검증 판정
+
+API 단계는 다음 순서로 검사한다. 앞 단계가 실패하면 뒤 단계는 하지 않는다.
+
+| 순서 | 검사 | 실패 시 `failureType` |
+|---|---|---|
+| 1 | `expectStatus` 상태 코드 | `API_ERROR` |
+| 2 | `responseSchema` 응답 구조 | `API_SCHEMA_MISMATCH` |
+| 3 | `expectCapture` 기대값 | `ASSERTION_FAILED` |
+| 4 | `crossChecks` 화면·API·DB 비교 | `DATA_MISMATCH` |
+
+`schemaCheck`는 `PASSED`, `FAILED`, `NOT_CHECKED` 중 하나다. 명세에 응답 구조가 없으면 `NOT_CHECKED`이며, 통과로 세지 않는다.
+
+`crossChecks` 판정은 정규화한 값으로 다음과 같이 정한다.
+
+| 조건 | 판정 |
+|---|---|
+| 지정한 출처의 값을 얻지 못함 | `MISMATCH` |
+| 값들이 서로 다름 | `MISMATCH` |
+| 값들이 같지만 `expected`와 다름 | `MISMATCH` |
+| 값들이 같고 `expected`와 같음 | `MATCH` |
+| `consistencyOnly`이고 값들이 서로 같음 | `MATCH` |
+| 비교할 출처가 없음 | `NOT_APPLICABLE` |

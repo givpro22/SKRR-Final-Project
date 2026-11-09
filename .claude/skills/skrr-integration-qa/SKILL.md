@@ -41,6 +41,9 @@ python3 .claude/skills/skrr-integration-qa/scripts/check_contracts.py
 | 백엔드 ↔ 실행기 | `runner-api.openapi.yaml` | 백엔드 클라이언트 | 이벤트 변환, 결과의 `captures`가 `crossChecks`에 연결되는지 |
 | TestQuery | 스키마 | AI Pydantic 모델, 실행기 Ajv, 백엔드 `dbChecks` | 세 곳이 같은 동작과 필드를 허용하는지 |
 | 카탈로그 ↔ 선택자 | 카탈로그 파일 | 생성된 `testId` | 가드가 실제로 없는 요소를 거부하는지 |
+| API 명세 ↔ `responseSchema` | 대상 사이트 API 명세 | 생성된 TestQuery | 명세의 해당 상태 코드 스키마와 같은지, LLM이 지어낸 값이 아닌지 |
+| `schemaCheck` | 실행기 결과 | 백엔드 저장, 리포트 | `NOT_CHECKED`를 통과로 세지 않는지 |
+| 인증 | 대상 사이트 로그인 방식 | TestQuery `headers`, `secretCaptures` | 토큰이 전달되는지, 로그와 HAR에 남지 않는지 |
 | S3 키 | 백엔드 업로드 | AI 읽기, 실행기 업로드 | `architecture.md` 키 구조, presigned 권한과 만료 |
 | 설정 이름 | 각 서비스 설정 코드 | ConfigMap, Secret, `.env.example` | 환경변수 이름과 기본값, 실행기에 비밀값이 없는지 |
 | 제한값 | `architecture.md` | UI, nginx, Spring, AI, 실행기 | 20MB, 500자, 가드 3회, 시간 제한이 모두 같은지 |
@@ -72,6 +75,9 @@ python3 .claude/skills/skrr-integration-qa/scripts/check_contracts.py
 - 실행기 파드에 비밀값이 없고, 내부 서비스로의 접속이 막히는지
 - 저장소와 로그, spec에 비밀값이 없는지. `git` 추적 파일에서 키 형태를 검색한다
 - 대상 DB에 쓰는 경로가 조회 API에 없는지
+- 치환 값으로 경로를 바꿔 허용 호스트 밖으로 나갈 수 없는지
+
+판정 정확도도 확인한다: 응답 필드를 일부러 빼거나 타입을 바꾼 장애, 세 값이 같은 값으로 틀린 장애를 심어 각각 `API_SCHEMA_MISMATCH`와 `MISMATCH`로 잡히는지 본다.
 
 ## 보고 형식
 

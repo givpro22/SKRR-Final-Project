@@ -835,10 +835,11 @@ components:
     StepKind: { type: string, enum: [SETUP, UI, API, DB, ASSERT, TEARDOWN] }
     StepStatus: { type: string, enum: [PENDING, RUNNING, PASSED, FAILED, SKIPPED] }
     Verdict: { type: string, enum: [MATCH, MISMATCH, NOT_APPLICABLE] }
+    SchemaCheckStatus: { type: string, enum: [PASSED, FAILED, NOT_CHECKED] }
     Severity: { type: string, enum: [LOW, MEDIUM, HIGH, CRITICAL] }
     FailureType:
       type: string
-      enum: [DATA_MISMATCH, ASSERTION_FAILED, ELEMENT_NOT_FOUND, API_ERROR, TIMEOUT, ENVIRONMENT_ERROR, TEST_CODE_ERROR]
+      enum: [DATA_MISMATCH, ASSERTION_FAILED, ELEMENT_NOT_FOUND, API_ERROR, API_SCHEMA_MISMATCH, TIMEOUT, ENVIRONMENT_ERROR, TEST_CODE_ERROR]
     ArtifactType: { type: string, enum: [SCREENSHOT, TRACE, HAR, SPEC] }
     RunEventType:
       type: string
@@ -1148,6 +1149,11 @@ components:
         detail: { type: [string, 'null'] }
         expectedValue: { type: [string, 'null'] }
         actualValue: { type: [string, 'null'] }
+        schemaCheck:
+          description: API 단계의 응답 구조 검사 결과. 세부 내용은 detail에 있다.
+          oneOf:
+            - $ref: '#/components/schemas/SchemaCheckStatus'
+            - type: 'null'
     CaseRunSummary:
       type: object
       required: [id, testCaseId, code, title, status, attempts, failedAttempts]
@@ -1303,6 +1309,7 @@ components:
         uiValue: { type: [string, 'null'] }
         apiValue: { type: [string, 'null'] }
         dbValue: { type: [string, 'null'] }
+        expectedValue: { type: [string, 'null'], description: 없으면 값이 서로 같은지만 확인한 항목이다. }
         verdict: { $ref: '#/components/schemas/Verdict' }
     RootCauseCandidate:
       type: object
