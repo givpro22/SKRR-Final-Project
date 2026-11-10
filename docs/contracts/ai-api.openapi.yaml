@@ -279,13 +279,26 @@ components:
           type: array
           items: { type: string }
         expectedResult: { type: string }
+        expectedValues:
+          type: array
+          minItems: 1
+          description: 사용자가 승인할 기대값. TestQuery 생성 요청에서는 승인된 값이 들어온다 (ADR-017).
+          items: { $ref: '#/components/schemas/ExpectedValue' }
+    ExpectedValue:
+      type: object
+      required: [label]
+      properties:
+        label: { type: string }
+        expected: { type: string }
+        consistencyOnly: { type: boolean }
+        reason: { type: string }
     GuardFailure:
       type: object
       required: [kind, message]
       properties:
         kind:
           type: string
-          enum: [SCHEMA_INVALID, UNKNOWN_REQUIREMENT, UNKNOWN_API, UNKNOWN_TEST_ID, UNKNOWN_VARIABLE, NO_ASSERTION, MISSING_EXPECTED, CATALOG_GAP]
+          enum: [SCHEMA_INVALID, UNKNOWN_REQUIREMENT, UNKNOWN_API, UNKNOWN_TEST_ID, UNKNOWN_VARIABLE, NO_ASSERTION, MISSING_EXPECTED, EXPECTED_NOT_APPROVED, CATALOG_GAP]
           description: CATALOG_GAP은 재생성으로 해결되지 않으므로 카탈로그 수정이 필요하다는 뜻이다 (WBS 4.5.5).
         message: { type: string }
         subject: { type: string, examples: [cart-remove-button] }

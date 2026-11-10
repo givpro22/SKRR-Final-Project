@@ -87,7 +87,7 @@ npx openapi-typescript ../docs/contracts/platform-api.openapi.yaml -o src/api/sc
 
 **UI-02 모달:** 입력 → 후보 대기 → 선택 또는 직접 입력 → 생성 대기 → 완료 순서다. 모달을 닫아도 요청은 서버에서 계속 진행되므로, 다시 열었을 때 `getTestRequest`로 이어서 표시한다.
 
-**UI-02-5:** `APPROVED` 시나리오만 체크할 수 있다. 수정하면 승인이 풀리므로 저장 후 목록을 다시 읽는다. 가드 문구는 `guard.message`와 `guard.attempt`로 표시한다.
+**UI-02-5:** `APPROVED` 시나리오만 체크할 수 있다. 케이스 상세에서 `expectedValues`를 보여 주고 고칠 수 있게 한다. 사용자가 승인하는 값이므로 `consistencyOnly` 항목은 이유와 함께 눈에 띄게 표시한다. 수정하면 승인이 풀리므로 저장 후 목록을 다시 읽는다. 가드 문구는 `guard.message`와 `guard.attempt`로 표시한다.
 
 **UI-03:** `getRun` 스냅샷을 그린 뒤 `EventSource`를 `?afterSeq={lastEventSeq}`로 연다. `EventSource`는 첫 요청에 헤더를 넣을 수 없다.
 

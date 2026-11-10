@@ -66,15 +66,31 @@ PREPARING → RUNNING → PASSED
 - `FAILED`: 테스트가 끝까지 돌았고 실패 케이스가 있음.
 - `ERROR`: 실행 자체가 실패함 (실행기 불능, TestQuery 생성 실패 등). 품질 결함이 아니라 환경 문제이므로 구분한다.
 - 프로젝트당 진행 중인 실행은 1개다. 이미 있으면 `409 RUN_ALREADY_ACTIVE`를 반환한다.
+- 케이스 하나의 TestQuery 생성이나 변환이 3회 실패하면 그 케이스만 `ERROR`(`TEST_CODE_ERROR`)로 두고 나머지는 계속 실행한다.
+- 실행기나 대상 사이트에 아예 접속할 수 없으면 남은 케이스를 멈추고 실행을 `ERROR`로 끝낸다.
+
+실행 끝 상태는 다음 순서로 정한다.
+
+| 순서 | 조건 | 끝 상태 |
+|---|---|---|
+| 1 | 사용자가 중단함 | `CANCELLED` |
+| 2 | 실행 자체가 불가능해 멈춤 | `ERROR` |
+| 3 | `FAILED` 케이스가 하나라도 있음 | `FAILED` |
+| 4 | `ERROR` 케이스가 하나라도 있음 | `ERROR` |
+| 5 | 그 밖의 경우 | `PASSED` |
+
+`ERROR` 케이스는 결함 탐지율과 오탐률 계산에서 빼고 따로 센다. 환경 문제를 제품 결함이나 오탐으로 세지 않기 위해서다.
 
 ## ScenarioRun, CaseResult
 
 ```text
-ScenarioRun: WAITING → RUNNING → PASSED | FAILED | CANCELLED
+ScenarioRun: WAITING → RUNNING → PASSED | FAILED | ERROR | CANCELLED
              WAITING → SKIPPED | CANCELLED
 CaseResult:  PENDING → RUNNING → PASSED | FAILED | ERROR | CANCELLED
              PENDING → SKIPPED | CANCELLED
 ```
+
+시나리오 끝 상태는 실행 끝 상태와 같은 규칙(3~5번)을 소속 케이스에 적용해 정한다.
 
 케이스가 실패하면 최대 3회까지 실행해 재현 횟수를 기록한다 (UI-04 "3회 중 3회"). 3회 중 1회라도 통과하면 `PASSED`가 아니라 `FAILED`로 두고 재현 횟수로 불안정함을 드러낸다. 성공 기준의 오탐률 산정을 흐리지 않기 위해서다.
 

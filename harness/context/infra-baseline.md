@@ -40,6 +40,6 @@ Docker Compose로 띄우고 `.env`로 AWS 키, 리전, 버킷, AI 서버 주소�
 |---|---|---|
 | `ops-test`의 `playwright-test` | Node + Playwright 실행 데모, SSE 이벤트 | 단계별 스크린샷 전달, 임시 디렉터리 실행. 임의 코드 실행 경고는 ADR-005의 근거 |
 | `rag-test`의 `qa-agent-poc` | sqlite-vec RAG, 평가 스크립트, Ollama | 인덱싱과 검색, 정답 데이터 기반 평가 방식 |
-| `feature/agenttest`의 `agent` | 가드, 코드 생성, 파이프라인 | 단계 분리 방식 |
+| `ops-test`, `feature/agenttest`의 `agent` | Python 파이프라인. 시나리오 → TestQuery(OpenAI 구조화 출력) → 코드 가드(카탈로그, OpenAPI, 단언 1개 이상) → **Python Playwright 인터프리터**(`runner.py`, 코드를 실행하지 않고 TestQuery를 해석). 표시용 `.spec.js`는 따로 렌더링 | TestQuery 형태(`ui`/`api` 묶음, `observe`/`invoke`), 가드 규칙. API는 `observe`만 구현됨 |
 
 동작이 검증된 코드라는 보장은 없다. 구조를 참고하되 계약에 맞춰 새로 작성한다.

@@ -830,7 +830,7 @@ components:
     TestCaseType: { type: string, enum: [NORMAL, EXCEPTION, BOUNDARY] }
     CompileStatus: { type: string, enum: [PASSED, FAILED] }
     RunStatus: { type: string, enum: [PREPARING, RUNNING, CANCELLING, PASSED, FAILED, CANCELLED, ERROR] }
-    ScenarioRunStatus: { type: string, enum: [WAITING, RUNNING, PASSED, FAILED, SKIPPED, CANCELLED] }
+    ScenarioRunStatus: { type: string, enum: [WAITING, RUNNING, PASSED, FAILED, ERROR, SKIPPED, CANCELLED] }
     CaseResultStatus: { type: string, enum: [PENDING, RUNNING, PASSED, FAILED, SKIPPED, CANCELLED, ERROR] }
     StepKind: { type: string, enum: [SETUP, UI, API, DB, ASSERT, TEARDOWN] }
     StepStatus: { type: string, enum: [PENDING, RUNNING, PASSED, FAILED, SKIPPED] }
@@ -1010,9 +1010,18 @@ components:
         attempt: { type: integer, minimum: 0, maximum: 3 }
         maxAttempts: { type: integer, const: 3 }
         message: { type: [string, 'null'], description: "예: 카탈로그에 'cart-remove-button' 요소가 없어 재생성 중" }
+    ExpectedValue:
+      type: object
+      description: 사용자가 승인하는 검증 항목과 기대값 (ADR-017). expected와 consistencyOnly 중 하나만 쓴다.
+      required: [label]
+      properties:
+        label: { type: string, examples: [무선 이어폰 수량] }
+        expected: { type: string, examples: ['3'] }
+        consistencyOnly: { type: boolean }
+        reason: { type: string, description: consistencyOnly를 쓴 이유 }
     TestCase:
       type: object
-      required: [id, code, scenarioId, title, type, scopes, expectedResult, order, version]
+      required: [id, code, scenarioId, title, type, scopes, expectedResult, expectedValues, order, version]
       properties:
         id: { type: string, format: uuid }
         code: { type: string, examples: [TC-12] }
@@ -1029,6 +1038,9 @@ components:
           type: array
           items: { type: string }
         expectedResult: { type: string }
+        expectedValues:
+          type: array
+          items: { $ref: '#/components/schemas/ExpectedValue' }
         order: { type: integer }
         version: { type: integer }
     TestCaseUpdate:
@@ -1046,6 +1058,10 @@ components:
           type: array
           items: { type: string }
         expectedResult: { type: string, minLength: 1 }
+        expectedValues:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/ExpectedValue' }
     Scenario:
       type: object
       required: [id, code, testRequestId, title, scopes, status, guard, version, testCases, caseCount]
@@ -1276,7 +1292,7 @@ components:
         run: { $ref: '#/components/schemas/Run' }
         kpis:
           type: object
-          required: [scenariosPassed, scenariosTotal, casesPassed, casesTotal, casePassRatePct, failedCases, crossCheckMismatches, durationMs, apiCallCount]
+          required: [scenariosPassed, scenariosTotal, casesPassed, casesTotal, casePassRatePct, failedCases, errorCases, crossCheckMismatches, durationMs, apiCallCount]
           properties:
             scenariosPassed: { type: integer }
             scenariosTotal: { type: integer }
@@ -1284,6 +1300,7 @@ components:
             casesTotal: { type: integer }
             casePassRatePct: { type: integer }
             failedCases: { type: integer }
+            errorCases: { type: integer, description: 환경 문제로 판정하지 못한 케이스. 실패 수에 넣지 않는다. }
             crossCheckMismatches: { type: integer }
             durationMs: { type: integer, format: int64 }
             apiCallCount: { type: integer }
