@@ -21,5 +21,6 @@ AI 기반 통합 테스트 자동화 및 오류 분석 시스템. 프로젝트 �
 | 2026-11-10 | 실행기를 Node로 재확정 (Python PoC 확인 후) | docs/decisions.md, skills/skrr-ai-pipeline | 사용자 결정 |
 | 2026-11-10 | 자가 치유 MVP 제외, 기대값 승인 단계 추가, 경쟁 분석 HTML 커밋 제외 | docs, skills/skrr-ai-pipeline, skills/skrr-backend, skills/skrr-frontend, skills/skrr-integration-qa, harness/context, .gitignore | 사용자 결정 |
 | 2026-11-10 | 경쟁 분석 HTML을 저장소에 포함 (커밋 제외 취소) | .gitignore, harness/context | 사용자 결정 |
+| 2026-11-10 | FR-01 구현 중 UI-01 캡처와 다른 구현 기준 기록(연결 확인 문구, 구축 대기·건너뜀 상태, 등록 요건 문구), k8s 설정 분배표에 문서 저장 변수 추가 | harness/context/ui-screens.md, skills/skrr-infra/references/k8s-layout.md | 사용자 결정 (ADR-018~021) |
 | 2026-11-10 | 경쟁 도구 분석 반영, 전체 검토 수정: ERROR 끝 상태 규칙, press·expectUrl 동작, LLM 출력 모델 분리, 조회 API 인증, 불안정 표시 | harness/context/market-research.md 외 docs, skills | 사용자 요청. 새 참조 자료와 전체 검토 |
 | 2026-11-10 | 7단계 표기 통일: `architecture.md`의 번호를 기준으로 삼고 경쟁 분석 요약과 ⑤ 치유 근거(ADR-015)를 연결 | docs/architecture.md, harness/context/market-research.md | main 병합 중 두 번호 체계 발견 |

@@ -21,7 +21,7 @@ flowchart LR
 ## 주요 흐름
 
 ```text
-1. 문서 등록   UI-01    업로드 → S3 → KB 구축 작업 → AI가 S3에서 읽어 sqlite-vec 적재
+1. 문서 등록   UI-01    업로드 → S3(개발은 local) 저장, "구축 대기" → "지식 베이스 구축" → KB 구축 작업 → AI가 원본을 읽어 sqlite-vec 적재
 2. 요청 정제   UI-02-1  자연어 → AI: RAG Top 3 근거로 후보 N개 → UI-02-1B 선택 또는 직접 입력
 3. 케이스 생성 UI-02-5  선택 → AI: 시나리오·케이스 생성 ↔ 가드 검증(최대 3회) → 사용자 승인
 4. 코드화      실행 전  승인 케이스 → AI: TestQuery → runner: spec.ts 변환, tsc 검사
@@ -57,7 +57,7 @@ flowchart LR
 
 ## S3 키 구조
 
-아키텍처 그림의 세 폴더에 `test-data/`와 `run-artifacts/`를 더했다.
+아키텍처 그림의 세 폴더에 `test-data/`와 `run-artifacts/`를 더했다. `STORAGE_TYPE=local`에서는 같은 키를 `LOCAL_STORAGE_DIR` 아래 상대 경로로 쓰고, AI 서버는 같은 디렉터리를 `DOCUMENT_SOURCE_DIR`로 읽기 전용 마운트해 `{DOCUMENT_SOURCE_DIR}/{s3Key}`에서 읽는다 (ADR-021).
 
 ```text
 requirements/{projectId}/{uuid}_{파일명}
@@ -74,8 +74,13 @@ run-artifacts/{runId}/{caseResultId}/attempt-{n}/trace.zip | network.har | step-
 | 변수 | 사용 서비스 | 비밀 | 설명 |
 |---|---|---|---|
 | `SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD` | backend | 비밀번호 | DB 접속 |
+| `STORAGE_TYPE` | backend | | `local`(기본) 또는 `s3`. ADR-021 |
+| `LOCAL_STORAGE_DIR` | backend | | local 저장소 루트. 앱 기본 `./data/storage`, compose·kind `/data/documents` |
+| `LOCAL_STORAGE_SIGNING_KEY` | backend | 예 | local 다운로드 링크 HMAC 서명 키. 비우면 시작할 때 임의 값을 만든다(재시작하면 이전 링크 무효) |
 | `AWS_REGION` | backend, ai | | 기본 `ap-northeast-2` |
-| `S3_BUCKET` | backend, ai | | 문서와 증거 버킷 |
+| `S3_BUCKET` | backend, ai | | 문서와 증거 버킷. `STORAGE_TYPE=s3`이면 필수 |
+| `S3_ENDPOINT` | backend, ai | | MinIO 등 S3 호환 저장소 주소. 비우면 실제 S3 |
+| `S3_PATH_STYLE` | backend, ai | | `true`면 path-style 주소. 기본 `false` |
 | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | backend, ai | 예 | 클러스터 신원 연동을 쓰면 생략 |
 | `AI_SERVER_URL` | backend | | 기본 `http://ai:8000` |
 | `RUNNER_URL` | backend | | 기본 `http://runner:3001` |
@@ -83,8 +88,21 @@ run-artifacts/{runId}/{caseResultId}/attempt-{n}/trace.zip | network.har | step-
 | `LLM_PROVIDER`, `LLM_MODEL`, `EMBEDDING_MODEL` | ai | | ADR-010 |
 | `LLM_API_KEY` | ai | 예 | 호스팅 API를 쓸 때만 |
 | `LLM_BASE_URL` | ai | | Ollama 등을 쓸 때만 |
+| `LLM_TIMEOUT_SECONDS` | ai | | LLM·임베딩 호출 1회 시간 제한. 기본 `60` |
+| `LLM_MAX_RETRIES` | ai | | 첫 시도 뒤 재시도 횟수(지수 백오프). 기본 `3` |
 | `KB_DATA_DIR` | ai | | 기본 `/data/kb` |
-| `RUNNER_ALLOWED_TARGET_HOSTS` | runner | | 쉼표 구분. 허용 대상 호스트 |
+| `DOCUMENT_SOURCE_DIR` | ai | | 개발 전용. 지정하면 S3 대신 `{DOCUMENT_SOURCE_DIR}/{s3Key}`에서 읽는다. backend `LOCAL_STORAGE_DIR`과 같은 디렉터리. 빈 값은 미지정 |
+| `MAX_DOCUMENT_BYTES` | ai | | 내려받을 문서 크기 상한. 기본 `20971520`(20MB, 업로드 제한과 같게) |
+| `RUNNER_ALLOWED_TARGET_HOSTS` | runner | | 쉼표 구분. `host`(모든 포트) 또는 `host:port`. 비면 모두 거부 |
+| `CONNECTIVITY_TIMEOUT_MS` | runner | | 연결 확인 HTTP GET 시간 제한. 기본 `10000` |
+
+서비스 내부 튜닝값(backend `SERVER_PORT` `JOB_POLLING_ENABLED`, ai `FAKE_EMBEDDING_DIM` `MAX_RETAINED_JOBS` `LOG_LEVEL`, runner `PORT` `HOST` `LOG_LEVEL`)은 다른 서비스와 이름을 맞출 필요가 없어 각 서비스 설정 파일의 기본값을 기준으로 한다.
+
+## 프록시와 전달 헤더
+
+다운로드 링크(`DownloadLink.url`, local 저장소의 `/api/local-storage/**` 서명 URL)의 스킴·호스트·포트는 프론트 nginx·Vite 프록시가 보내는 `X-Forwarded-Proto`, `X-Forwarded-Host`, `X-Forwarded-Port`로 만든다. 백엔드는 `server.forward-headers-strategy=native`(Tomcat RemoteIpValve)로 내부 프록시에서 온 헤더만 믿는다. 신뢰 범위는 Spring Boot 기본 `internal-proxies`(10/8, 172.16/12, 192.168/16, 100.64/10, 169.254/16, 127/8, ::1, fe80::/10, fc00::/7)이며, 좁히려면 `SERVER_TOMCAT_REMOTEIP_INTERNALPROXIES`(정규식)를 준다.
+
+Tomcat은 `X-Forwarded-Host`의 포트를 버리므로 포트는 `X-Forwarded-Port`로 따로 보내야 하고, `X-Forwarded-Proto`가 없으면 Host·Port도 적용되지 않는다. 프론트 nginx(`frontend/nginx.conf`)가 세 헤더를 모두 보낸다.
 
 ## 업로드와 시간 제한
 
@@ -95,7 +113,9 @@ run-artifacts/{runId}/{caseResultId}/attempt-{n}/trace.zip | network.har | step-
 | 업로드 파일 크기 | 20MB | UI-01 안내, Spring `max-file-size` |
 | 업로드 요청 본문 | 21MB (multipart 오버헤드 포함) | 프론트 nginx `client_max_body_size`, Spring `max-request-size` |
 | SSE 읽기 제한 | 3600초, 버퍼링 끔 | 프론트 nginx (Ingress 통과 여부는 실제 스트림으로 확인) |
-| LLM 호출 | 60초, 재시도 3회 (지수 백오프) | ai |
+| LLM 호출 | 60초, 재시도 3회 (지수 백오프) | ai `LLM_TIMEOUT_SECONDS`, `LLM_MAX_RETRIES` |
+| 대상 사이트 연결 확인 | 10초 (실행기) < 30초 (백엔드 → 실행기 읽기 제한) | runner `CONNECTIVITY_TIMEOUT_MS`, backend `skrr.runner.read-timeout` |
+| AI 문서 크기 | 20MB | ai `MAX_DOCUMENT_BYTES` |
 | 가드 재생성 | 최대 3회 | ai, UI-02-5 표시 |
 | 케이스 1회 실행 | 120초 | backend → runner |
 | 실패 재현 | 최대 3회 | backend |

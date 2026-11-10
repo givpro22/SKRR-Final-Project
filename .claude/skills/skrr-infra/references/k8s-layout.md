@@ -18,15 +18,15 @@
 
 | 리소스 | 키 | 받는 서비스 |
 |---|---|---|
-| ConfigMap `skrr-backend` | `AWS_REGION`, `S3_BUCKET`, `AI_SERVER_URL`, `RUNNER_URL`, `SPRING_DATASOURCE_URL` | backend |
-| Secret `skrr-backend` | `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `TEST_CONTROL_TOKEN`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | backend |
-| ConfigMap `skrr-ai` | `AWS_REGION`, `S3_BUCKET`, `LLM_PROVIDER`, `LLM_MODEL`, `EMBEDDING_MODEL`, `LLM_BASE_URL`, `KB_DATA_DIR` | ai |
+| ConfigMap `skrr-backend` | `STORAGE_TYPE`(base `s3`, local `local`), `AWS_REGION`, `S3_BUCKET`, `AI_SERVER_URL`, `RUNNER_URL`, `SPRING_DATASOURCE_URL`, local만 `LOCAL_STORAGE_DIR` | backend |
+| Secret `skrr-backend` | `SPRING_DATASOURCE_USERNAME`, `SPRING_DATASOURCE_PASSWORD`, `TEST_CONTROL_TOKEN`, `LOCAL_STORAGE_SIGNING_KEY`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | backend |
+| ConfigMap `skrr-ai` | `AWS_REGION`, `S3_BUCKET`, `LLM_PROVIDER`, `LLM_MODEL`, `EMBEDDING_MODEL`, `LLM_BASE_URL`, `KB_DATA_DIR`, local만 `DOCUMENT_SOURCE_DIR` | ai |
 | Secret `skrr-ai` | `LLM_API_KEY`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | ai |
 | ConfigMap `skrr-runner` | `RUNNER_ALLOWED_TARGET_HOSTS` | runner |
 | Secret `skrr-postgres` | `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | postgres |
 | Secret `skrr-basic-auth` | `users` | Traefik Middleware |
 
-클러스터 신원 연동(EKS IRSA 등)을 쓰면 AWS 키 항목을 뺀다. 저장소에는 값 없는 `secret.example.yaml`만 둔다.
+S3 호환 저장소를 쓸 때만 `S3_ENDPOINT`, `S3_PATH_STYLE`을 backend·ai ConfigMap에 더한다. 튜닝값(`LLM_TIMEOUT_SECONDS`, `LLM_MAX_RETRIES`, `MAX_DOCUMENT_BYTES`, `CONNECTIVITY_TIMEOUT_MS`)은 앱 기본값을 쓰고 바꿀 때만 넣는다. 클러스터 신원 연동(EKS IRSA 등)을 쓰면 AWS 키 항목을 뺀다. 저장소에는 값 없는 `secret.example.yaml`만 둔다.
 
 ## NetworkPolicy
 
@@ -84,4 +84,5 @@ egress:
 | 접속 | port-forward 또는 kind 포트 매핑 | 도메인 + TLS (미정) |
 | 대상 사이트 | 로컬 또는 배포 URL | 배포 URL |
 | 스토리지 | kind 기본 StorageClass | 클러스터 StorageClass |
+| 문서 저장 (ADR-021) | `STORAGE_TYPE=local` + PVC `doc-storage`(backend 쓰기, ai 읽기 전용) | S3 |
 | Basic Auth | 생략 가능 | 필수 |

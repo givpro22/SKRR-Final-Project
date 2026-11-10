@@ -1,6 +1,8 @@
 -- SKRR 플랫폼 DB 스키마 초안 v0.1 (PostgreSQL 16 기준)
 -- 근거: harness/references 요구사항서, WBS 4.1.3, UI-01~UI-04 화면.
 -- 구현 시 backend/src/main/resources/db/migration/V1__init.sql 로 옮긴다.
+-- V1 이후의 변경은 이 파일(최종 상태)과 함께 새 Flyway 마이그레이션(V3 이후)으로 반영한다.
+--  * 2026-11-10 2차 결정: document.status에 SKIPPED 추가, project에 대상 확인 결과(상태 코드, 문장) 컬럼 추가.
 --
 -- 규칙
 --  * 상태값은 ENUM 타입 대신 VARCHAR + CHECK 로 둔다. JPA 매핑과 값 추가 마이그레이션이 단순하기 때문이다.
@@ -23,6 +25,8 @@ CREATE TABLE project (
     target_url          VARCHAR(500),
     target_url_status   VARCHAR(20)  NOT NULL DEFAULT 'UNVERIFIED' CHECK (target_url_status IN ('UNVERIFIED','CHECKING','REACHABLE','UNREACHABLE')), -- enum:TargetUrlStatus
     target_checked_at   TIMESTAMPTZ,
+    target_check_status_code SMALLINT,         -- 마지막 확인에서 대상 서버가 돌려준 HTTP 상태 코드. 응답이 없었으면 NULL (ADR-019)
+    target_check_message     TEXT,             -- 마지막 확인 결과 문장. 새로고침해도 실패 사유를 보여 주기 위해 저장
     query_api_base_url  VARCHAR(500),          -- 대상 사이트의 읽기 전용 DB 조회 API
     test_control_url    VARCHAR(500),          -- 대상 사이트의 테스트 전용 초기화 API
     created_by          UUID REFERENCES app_user(id),
@@ -41,10 +45,10 @@ CREATE TABLE document (
     s3_key             VARCHAR(1024) NOT NULL UNIQUE,
     content_type       VARCHAR(100) NOT NULL,
     size_bytes         BIGINT NOT NULL CHECK (size_bytes BETWEEN 0 AND 20971520), -- 20MB 제한 (UI-01)
-    checksum_sha256    CHAR(64) NOT NULL,
-    status             VARCHAR(20) NOT NULL DEFAULT 'UPLOADED' CHECK (status IN ('UPLOADED','INDEXING','INDEXED','REGISTERED','FAILED')), -- enum:DocumentStatus
+    checksum_sha256    CHAR(64) NOT NULL,     -- SHA-256 소문자 16진수 64자
+    status             VARCHAR(20) NOT NULL DEFAULT 'UPLOADED' CHECK (status IN ('UPLOADED','INDEXING','INDEXED','REGISTERED','FAILED','SKIPPED')), -- enum:DocumentStatus
     index_progress     SMALLINT NOT NULL DEFAULT 0 CHECK (index_progress BETWEEN 0 AND 100),
-    summary            JSONB NOT NULL DEFAULT '{}'::jsonb, -- 예: {"requirementCount":42}, {"endpointCount":18}
+    summary            JSONB NOT NULL DEFAULT '{}'::jsonb, -- 키: requirementCount, endpointCount, elementCount, pageCount, variableCount, secretCount (platform-api Document.summary)
     error_message      TEXT,
     uploaded_by        UUID REFERENCES app_user(id),
     created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),

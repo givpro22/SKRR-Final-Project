@@ -30,6 +30,7 @@
 | 인프라 | Docker, Kubernetes | 확정 | 사용자 결정 |
 | 인프라 | Kustomize, Traefik, kind, kubeconform | 제안 | ADR-008 |
 | 저장소 | Amazon S3 | 확정 | 아키텍처 그림, `develope`에 연동 구현 |
+| 저장소 | 로컬 디렉터리(`STORAGE_TYPE=local`) | 확정 | 리더 결정 (2026-11-10). 개발·compose·kind 기본값. ADR-021 |
 | LLM | 미정 | 미정 | ADR-010 |
 
 ## ADR-001 작업 영역은 프론트, 백엔드, AI, 인프라 — 확정
@@ -161,6 +162,42 @@ ADR-014의 한계(승인 후에 기대값이 생겨 사람이 확인하지 못�
 | 리포트 PDF 내보내기 | MVP 이후 | 계약에는 `x-priority: later`로 유지. 구현하지 않고 버튼도 표시하지 않음 |
 | 이전 실행 대비 비교 | 포함 | `RunComparison` 구현. WBS 4.7에 작업 추가 필요 |
 
+## ADR-018 문서 인덱싱은 "지식 베이스 구축" 때 시작한다 — 확정 (사용자, 2026-11-10)
+
+UI-01 캡처는 업로드 직후 문서별로 "인덱싱 중 68%"를 보여 주지만, 계약에는 문서별 인덱싱 API가 없고 AI 서버는 프로젝트 인덱스 파일을 통째로 다시 만든다. 구축 버튼 기준을 유지한다.
+
+- 업로드한 필수 문서는 `UPLOADED`("구축 대기")에 머문다. "지식 베이스 구축"을 누르면 활성 필수 문서 3종이 함께 `INDEXING`이 된다.
+- 문서 3종이 모두 있어야 의미 있는 인덱스가 되고(FR-01), 업로드마다 전체를 다시 만들면 비용이 커진다.
+- 캡처와 다른 점은 ADR-012 충돌표와 `traceability.md` "화면 캡처와 다르게 정한 항목"에 남긴다.
+
+## ADR-019 대상 사이트 연결 확인은 HTTP GET, 서버가 응답하면 도달 가능 — 확정 (사용자, 2026-11-10)
+
+실행기가 대상 URL에 HTTP GET을 한 번 보내 판정한다. 브라우저를 띄우는 방식은 느리고 실행기에 Chromium이 필요해 고르지 않았다.
+
+| 결과 | 판정 |
+|---|---|
+| 2xx·3xx·4xx 응답 | 도달 가능 (`REACHABLE`), 상태 코드를 함께 돌려줌 |
+| 5xx, 연결 실패, 시간 초과, 허용 목록 밖 | 도달 불가 (`UNREACHABLE`) |
+| 실행기 장애 | 판정하지 않고 `503 DEPENDENCY_UNAVAILABLE` (환경 장애와 대상 실패를 구분, `ERROR`/`FAILED` 구분 원칙과 같음) |
+
+4xx를 도달 가능으로 본 이유는 Basic Auth(401)나 첫 화면 404처럼 서버가 살아 있는 경우를 접속 실패로 보이지 않게 하기 위해서다. HTTP 확인이므로 화면 문구를 "Playwright 연결 확인"에서 "연결 확인"으로 바꾼다. 결과(상태, 상태 코드, 문장)는 `project`에 저장해 새로고침해도 사유가 남는다. 세부 표는 `target-site-contract.md` "연결 확인".
+
+## ADR-020 지식 베이스 구축의 문서별 결과와 재구축 — 확정 (사용자, 2026-11-10)
+
+- 구축이 실패하면 원인 문서는 `FAILED`, 다른 문서의 오류 때문에 처리하지 않은 문서는 `SKIPPED`이다. 정상 문서를 "실패"로 보이지 않게 하기 위해 `DocumentStatus`에 `SKIPPED`를 더했다. 특정 문서가 원인이 아닌 실패(인덱스 저장 실패, AI 서버 장애)는 처리 중이던 문서를 모두 `FAILED`로 둔다.
+- 재구축하면 활성 필수 문서 전부를 다시 인덱싱한다. 이미 `INDEXED`인 문서도 `INDEXING`으로 돌아간다(`INDEXED → INDEXING`). `FAILED`·`SKIPPED`도 `INDEXING`으로 다시 시도한다.
+- `TEST_DATA`의 업로드·교체·삭제는 지식 베이스를 `STALE`로 만들지 않는다. AI 서버로 보내지 않으므로 인덱스가 낡지 않는다.
+- AI 서버 오류 코드(`AiErrorCode`, `AiProblemCode`)와 요청 규칙(필수 3종 각 1개, `TEST_DATA` 무시, 체크섬 소문자 16진수 64자)을 `ai-api.openapi.yaml`에 고정했다.
+
+## ADR-021 문서 저장소 기본값은 local, 운영은 S3 — 확정 (리더, 2026-11-10)
+
+AWS 자격 증명 없이 개발과 통합 검증을 할 수 있게 `STORAGE_TYPE` 기본값을 `local`로 둔다.
+
+- backend는 `{LOCAL_STORAGE_DIR}/{s3Key}`에 저장하고, 다운로드 링크는 백엔드를 거치는 HMAC 서명·만료 URL(`/api/local-storage/**`)로 준다. presigned URL과 같은 방식으로 쓰도록 `getDocumentDownloadLink` 계약은 바꾸지 않는다.
+- ai는 같은 디렉터리를 읽기 전용으로 마운트하고 `DOCUMENT_SOURCE_DIR`로 지정해 `{DOCUMENT_SOURCE_DIR}/{s3Key}`에서 읽는다. AI 요청 계약(`s3Key`)은 그대로다.
+- compose와 kind overlay는 local, 쿠버네티스 base는 `s3`이다. S3 호환 저장소(MinIO 등)는 `S3_ENDPOINT`, `S3_PATH_STYLE`로 지정하며 backend와 ai가 같은 이름을 쓴다.
+- 한계: local 저장소는 backend와 ai가 같은 볼륨을 봐야 하므로 단일 노드(kind)에서만 쓴다. 다중 노드나 운영은 S3를 쓴다.
+
 ## ADR-012 자료가 충돌할 때의 우선순위 — 제안
 
 1. 사용자가 직접 정한 내용, 2. 이 문서의 결정, 3. 요구사항서, 4. WBS, 5. UI 캡처, 6. 파이프라인·아키텍처 그림, 7. `develope` 베이스라인과 팀 PoC, 8. 경쟁 도구 분석 HTML (참고만).
@@ -176,3 +213,6 @@ ADR-014의 한계(승인 후에 기대값이 생겨 사람이 확인하지 못�
 | 그림은 Docker Compose, 팀 역할은 쿠버네티스 | 쿠버네티스로 확정. Compose는 로컬 개발용 |
 | 플랫폼 ERD, API 명세 없음 | 이 저장소의 `docs/contracts/`가 초안 |
 | WBS는 테스트 사이트 ERD·API 완료, 자료는 폴더에 없음 | 받으면 `harness/references/`에 추가. 그 전에는 `target-site-contract.md`의 형식으로 목업 사용 (WBS 4.5.1) |
+| UI-01 캡처는 업로드 직후 문서별 인덱싱("인덱싱 중 68%") | 사용자 결정으로 구축 버튼 기준 유지. 업로드 후 "구축 대기" (ADR-018) |
+| UI-01 캡처 배지 "Playwright 연결 확인", 실제 확인은 HTTP GET | 사용자 결정으로 문구를 "연결 확인"으로 바꿈 (ADR-019) |
+| UI-01 캡처에 없는 문서·지식 베이스 상태 문구 | `state-machines.md` 표의 문구를 쓴다 (구축 대기, 인덱싱 실패, 건너뜀, 미구축, 구축 중, 최신, 재구축 필요, 구축 실패). 프론트가 캡처 스타일로 설계 |

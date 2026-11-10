@@ -36,6 +36,8 @@ erDiagram
         varchar name
         varchar target_url
         varchar target_url_status
+        smallint target_check_status_code
+        text target_check_message
         varchar query_api_base_url
         varchar test_control_url
     }
@@ -188,7 +190,10 @@ erDiagram
 | `failure_fingerprint` | 이전 실행 대비 "새로운 실패 / 계속 실패 / 해결됨"을 계산한다 |
 | `run_event` 저장 | SSE 재연결 시 유실 없이 복구하고, 끝난 실행의 로그도 같은 데이터로 본다 |
 | 벡터 데이터는 DB에 두지 않음 | WBS 4.5.2가 `sqlite-vec`를 지정했다. `knowledge_base`는 상태와 통계만 보관한다 |
-| 파일 본문은 S3, `artifact`와 `document`는 위치만 저장 | 아키텍처 그림과 같고, DB 크기를 작게 유지한다 |
+| 파일 본문은 S3, `artifact`와 `document`는 위치만 저장 | 아키텍처 그림과 같고, DB 크기를 작게 유지한다. 개발용 local 저장소도 같은 키를 상대 경로로 쓴다 (ADR-021) |
+| `document.status`에 `SKIPPED` | 구축이 실패했을 때 원인 문서(`FAILED`)와 다른 문서 때문에 처리하지 않은 문서를 구분한다 (ADR-020) |
+| `project.target_check_status_code`, `target_check_message` | 연결 확인 결과를 새로고침해도 보여 준다. `target_url`이 바뀌면 `target_url_status`와 함께 비운다 (ADR-019) |
+| `document.summary` 키 고정 | 문서 종류별 개수 키(`requirementCount` 등)를 `platform-api` `Document.summary`에 정의했다. 화면 문구와 등록 요건 판정이 이 키를 읽는다 |
 
 ## 검증 방법
 
@@ -196,7 +201,7 @@ erDiagram
 python3 .claude/skills/skrr-integration-qa/scripts/check_contracts.py
 ```
 
-`schema.sql`의 CHECK 값과 OpenAPI enum이 다르면 실패한다. DDL은 2026-11-09에 임시 PostgreSQL 17에서 적용과 주요 제약 동작을 확인했다. 목표 버전인 16에서는 아직 실행하지 않았다.
+`schema.sql`의 CHECK 값과 OpenAPI enum이 다르면 실패한다. `schema.sql`은 최종 상태이고, 백엔드는 V1 이후 변경을 새 Flyway 마이그레이션으로 반영한다 (2026-11-10 2차 결정분은 V3). DDL은 2026-11-09에 임시 PostgreSQL 17에서 적용과 주요 제약 동작을 확인했다. 목표 버전인 16에서는 아직 실행하지 않았다.
 
 ## 담당자 검토 필요
 
