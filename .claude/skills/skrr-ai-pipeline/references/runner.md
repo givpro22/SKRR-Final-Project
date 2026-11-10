@@ -2,6 +2,8 @@
 
 계약: `docs/contracts/runner-api.openapi.yaml`, `docs/contracts/schemas/test-query.schema.json`. 근거: ADR-005, WBS 4.6.1, 4.6.2, 4.6.4, FR-04, FR-05, NFR-01.
 
+언어는 Node로 확정했다 (2026-11-10). 팀 저장소의 Python 실행기(`agent/runner.py`)는 동작별 Playwright 대응과 응답 가로채기 방식의 참고 자료다. 코드를 옮기지 말고 이 계약에 맞춰 새로 작성한다.
+
 ## 스택과 구조
 
 Node 22, TypeScript, Fastify, `@playwright/test`, Ajv(TestQuery 검증). Chromium 전용(다중 브라우저는 제외 범위), 기본 1280×800.
@@ -30,6 +32,8 @@ runner/src/
 | `waitForApi` | `page.waitForResponse`를 등록하고 `trigger` 클릭 후 대기, 상태와 구조 검사, JSONPath 캡처 |
 | `apiRequest` | `request.fetch(path, { headers, data })`, 상태와 구조 검사, JSONPath 캡처 |
 | `expectCapture` | 캡처 값과 비교 |
+| `press` | `page.getByTestId(testId).press(key)` |
+| `expectUrl` | `await expect(page).toHaveURL(...)`, `PREFIX`면 경로 시작 부분 비교 |
 
 - 입력 값은 `JSON.stringify`로만 코드에 넣는다. 문자열 이어 붙이기로 넣으면 코드 주입이 가능하다.
 - `{{name}}` 치환은 실행 시점에 변수, 비밀 변수, 캡처 값에서 찾는다. `secretVariables`와 `secretCaptures` 값은 spec 소스에 쓰지 않는다.

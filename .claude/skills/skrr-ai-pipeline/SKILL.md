@@ -51,6 +51,18 @@ class LLMClient(Protocol):
 
 제공자는 `LLM_PROVIDER`로 고른다 (ADR-010 미정). 파이프라인이 특정 SDK를 직접 import하지 않게 해서, 제공자가 정해져도 파이프라인을 고치지 않게 한다. `fake.py`는 정해진 입력에 정해진 출력을 돌려주어 테스트와 개발에 쓴다. 호출에는 60초 시간 제한과 지수 백오프 3회 재시도를 건다 (WBS 4.6.3). 다만 스키마 위반 응답은 재시도 대신 가드 루프로 넘긴다.
 
+### LLM 출력 모델과 전송 형식 분리
+
+LLM에게 받는 Pydantic 모델과 실행기에 보내는 TestQuery를 분리하고, 코드가 변환한다. 구조화 출력의 엄격 모드는 형태가 정해지지 않은 객체를 허용하지 않는 경우가 많기 때문이다. 팀 PoC도 이 제약 때문에 요청 본문을 JSON 문자열로 받았다.
+
+- 맵(`headers`, `captures`, `variables`)은 LLM에게 `[{name, value}]` 배열로 받아 객체로 바꾼다.
+- `body`는 JSON 문자열로 받아 파싱하고, 파싱 실패는 `SCHEMA_INVALID`로 처리한다.
+- `responseSchema`는 LLM에게 받지 않는다 (ADR-014).
+
+### 팀 PoC 참고
+
+팀 저장소 `agent/`의 가드 규칙(카탈로그 요소 존재, OpenAPI 작업과 상태 코드 존재, 단언 1개 이상)과 `observe`/`invoke` 구분은 이 계약의 `waitForApi`/`apiRequest`, 가드 표와 대응한다. 구조를 참고하되 계약 형식으로 새로 작성한다. PoC는 선택자로 role, label, text도 허용했지만 이 계약은 `testId`만 허용한다. 가드와 재현성이 단순해지기 때문이다.
+
 ## 작업 처리
 
 모든 생성 API는 202와 `jobId`를 반환한다. 작업은 프로세스 메모리에 두며, 재시작하면 사라지고 백엔드가 재요청한다 (ADR-007). `progress.message`는 화면에 그대로 표시되므로 사용자가 읽을 문장으로 쓴다. 업무 DB에는 접근하지 않는다.
@@ -91,10 +103,13 @@ retrieve → generate → guard ─ 통과 → 결과
 | `testId`가 카탈로그에 있음 | `UNKNOWN_TEST_ID` |
 | `{{이름}}`이 `availableVariables`나 앞 단계 캡처에 있음 | `UNKNOWN_VARIABLE` |
 | 케이스에 `expect*`, `expectStatus`, `crossChecks` 중 검증이 하나 이상 있음 | `NO_ASSERTION` |
-| `crossChecks`마다 `expected`가 있거나, `consistencyOnly`에 값이 실행마다 달라지는 이유가 있음 | `MISSING_EXPECTED` |
+| 케이스마다 `expectedValues`가 있고, `crossChecks`마다 `expected`가 있거나 `consistencyOnly`에 이유가 있음 | `MISSING_EXPECTED` |
+| TestQuery의 기대값이 승인된 `expectedValues`와 같음 | `EXPECTED_NOT_APPROVED` |
 | 재시도해도 필요한 요소가 카탈로그에 없음 | `CATALOG_GAP` (사용자가 카탈로그를 고쳐야 함) |
 
 케이스 유형을 정상, 예외, 경계로 나누고, 코드(`SC-`, `TC-`)는 요청의 시작 번호로 코드가 부여한다.
+
+케이스마다 `expectedValues`를 만든다 (ADR-017). 사용자가 승인 화면에서 보고 고치는 값이므로, `expectedResult` 문장과 명세·테스트 데이터에서 근거를 찾아 구체적인 값으로 쓴다. 초기화된 데이터를 쓰므로 대부분 미리 알 수 있다. 실행마다 달라지는 값(주문 번호 등)만 `consistencyOnly`와 이유를 적는다. 기대값이 하나도 없는 케이스는 `MISSING_EXPECTED`로 거부한다.
 
 ## 4. TestQuery 생성 (WBS 4.6)
 
@@ -104,7 +119,7 @@ API 검사는 ADR-014를 따른다. 가드를 통과한 뒤 코드가 후처리�
 
 - **응답 구조:** `apiRequest`, `waitForApi`마다 `specOperation`과 `expectStatus`로 API 명세에서 응답 스키마를 찾아 `responseSchema`에 복사한다. `$ref`를 모두 풀어서 넣는다. 실행기는 명세 파일에 접근하지 않기 때문이다. LLM이 쓴 `responseSchema`는 버린다. 명세에 없으면 생략한다.
 - **인증:** 토큰 방식이면 로그인 응답을 캡처해 `Authorization: Bearer {{이름}}`으로 쓰고, 그 캡처를 `secretCaptures`에 넣는다. 명세의 인증 방식을 보고 정하며, 쿠키 방식이면 헤더를 넣지 않는다.
-- **기대값:** 케이스의 `expectedResult`를 근거로 값을 정한다. 초기화된 데이터를 쓰므로 대부분 미리 알 수 있다. `consistencyOnly`는 주문 번호처럼 실행마다 달라지는 값에만 쓴다.
+- **기대값:** 요청에 들어온 승인된 `expectedValues`만 쓴다 (ADR-017). `crossChecks`의 `label`과 `expected`(또는 `consistencyOnly`)가 승인된 항목과 같아야 하고, 다르거나 없는 항목은 가드가 `EXPECTED_NOT_APPROVED`로 거부한다. 새 기대값을 지어내지 않는다.
 
  선택자는 `testId`만 쓴다. 쓰기 API는 `dbChecks`에 넣지 않는다. 테스트 계정 값은 `availableVariables`에 있는 이름을 `{{이름}}`으로만 참조하고, 없는 이름은 가드가 거부한다. TEST_DATA 값은 AI 서버로 오지 않는다. 실행기 `renderSpec`이 실패하면 백엔드가 `previousError`와 함께 다시 호출한다.
 
@@ -117,6 +132,7 @@ API 검사는 ADR-014를 따른다. 가드를 통과한 뒤 코드가 후처리�
 - 입력에 있는 값만 인용한다. `evidence`가 입력 값과 대응되지 않는 후보는 버린다. 성공 기준이 "실제 원인 1순위 제시"이므로 그럴듯한 추측은 해롭다.
 - `confidencePct`의 기준을 프롬프트에 정의하고 합이 100을 넘지 않게 정규화한다.
 - 근거가 부족하면 후보를 적게 낸다. 빈 결과도 정상이다.
+- `ELEMENT_NOT_FOUND`이면 카탈로그에서 이름이나 위치가 비슷한 요소를 찾아 "요소가 바뀌었을 가능성"을 후보로 낸다 (ADR-015). 판정은 바꾸지 않고, 치유해서 다시 실행하지도 않는다. 결함을 가리지 않기 위해서다.
 - 민감한 값은 분석 입력 전에 가린다.
 
 ## 테스트

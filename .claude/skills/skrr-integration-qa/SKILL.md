@@ -43,6 +43,7 @@ python3 .claude/skills/skrr-integration-qa/scripts/check_contracts.py
 | 카탈로그 ↔ 선택자 | 카탈로그 파일 | 생성된 `testId` | 가드가 실제로 없는 요소를 거부하는지 |
 | API 명세 ↔ `responseSchema` | 대상 사이트 API 명세 | 생성된 TestQuery | 명세의 해당 상태 코드 스키마와 같은지, LLM이 지어낸 값이 아닌지 |
 | `schemaCheck` | 실행기 결과 | 백엔드 저장, 리포트 | `NOT_CHECKED`를 통과로 세지 않는지 |
+| 승인된 기대값 | `test_case.expected_values` | TestQuery `crossChecks`, `expectCapture` | 승인되지 않은 기대값이 실행에 쓰이지 않는지, 수정 시 승인이 풀리는지 |
 | 인증 | 대상 사이트 로그인 방식 | TestQuery `headers`, `secretCaptures` | 토큰이 전달되는지, 로그와 HAR에 남지 않는지 |
 | S3 키 | 백엔드 업로드 | AI 읽기, 실행기 업로드 | `architecture.md` 키 구조, presigned 권한과 만료 |
 | 설정 이름 | 각 서비스 설정 코드 | ConfigMap, Secret, `.env.example` | 환경변수 이름과 기본값, 실행기에 비밀값이 없는지 |
@@ -66,6 +67,8 @@ python3 .claude/skills/skrr-integration-qa/scripts/check_contracts.py
 | FR-06 | 심은 장애에서 실패 판정과 원인 후보가 나오고 근거가 실제 값임 |
 | FR-07 | 리포트 수치가 원본 데이터와 일치 |
 | NFR-01 | 같은 입력을 반복 실행해 정상 케이스의 판정이 안정적임 |
+
+끝 상태 집계도 확인한다: `ERROR` 케이스가 실패 수와 탐지율, 오탐률에 섞이지 않는지, 불안정 표시가 재현 횟수와 맞는지 본다.
 
 실패 시나리오도 확인한다: AI 서버 다운(`ERROR`, 재시작 후 복구), 실행기 다운, 대상 사이트 접속 불가, 실행 중단, 중단 후 데이터 정리, 허용되지 않은 대상 URL.
 

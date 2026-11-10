@@ -133,6 +133,7 @@ CREATE TABLE test_case (
     preconditions    JSONB NOT NULL DEFAULT '[]'::jsonb,
     steps            JSONB NOT NULL DEFAULT '[]'::jsonb,
     expected_result  TEXT NOT NULL,
+    expected_values  JSONB NOT NULL DEFAULT '[]'::jsonb, -- 사용자가 승인하는 기대값 (ADR-017)
     ord              SMALLINT NOT NULL,
     version          INTEGER NOT NULL DEFAULT 1,
     created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -183,7 +184,7 @@ CREATE TABLE scenario_run (
     run_id       UUID NOT NULL REFERENCES test_run(id) ON DELETE CASCADE,
     scenario_id  UUID NOT NULL REFERENCES scenario(id),
     ord          SMALLINT NOT NULL,
-    status       VARCHAR(20) NOT NULL DEFAULT 'WAITING' CHECK (status IN ('WAITING','RUNNING','PASSED','FAILED','SKIPPED','CANCELLED')), -- enum:ScenarioRunStatus
+    status       VARCHAR(20) NOT NULL DEFAULT 'WAITING' CHECK (status IN ('WAITING','RUNNING','PASSED','FAILED','ERROR','SKIPPED','CANCELLED')), -- enum:ScenarioRunStatus
     duration_ms  BIGINT,
     UNIQUE (run_id, scenario_id),
     UNIQUE (run_id, ord)

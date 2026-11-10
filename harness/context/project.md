@@ -18,6 +18,7 @@
 | `image (3).png` | AI 파이프라인 |
 | `image (4).png` | 시스템 구조, 포트, S3 폴더 |
 | `export/UI-*.png` | 화면 7장. 요약은 `harness/context/ui-screens.md` |
+| `AI 테스트 툴 내부 동작.html`, `AI 테스트 툴 실제 화면.html` | 경쟁 도구 7종의 동작과 화면 분석. 요약은 `harness/context/market-research.md`. 이미지가 포함돼 크므로 요약을 먼저 본다 |
 
 ## 범위
 

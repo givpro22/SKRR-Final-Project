@@ -39,7 +39,7 @@ flowchart LR
 | ② 생성 Generate | 시나리오·케이스 생성 ↔ 코드 가드(LangGraph, 최대 3회) → TestQuery | UI-02-5 · §3~4, ADR-005·ADR-014 |
 | ③ 안정화 Stabilize | 데이터 초기화(SETUP)·정리(TEARDOWN), `data-testid` 가드로 선택자 고정 | `state-machines.md` 실행 순서 · `target-site-contract.md` reset |
 | ④ 실행 Execute | runner: TestQuery→spec.ts→`tsc`→Playwright 실행 + 증거 수집(스크린샷·trace·HAR) | UI-03 · `runner.md` |
-| ⑤ 치유 Heal | **채택하지 않음.** 깨지는 선택자를 자동 치유하는 대신 `data-testid`+가드로 환각을 원천 차단하고, 요소가 없으면 `CATALOG_GAP`으로 사용자에게 카탈로그 수정을 요청한다 | ADR-005 |
+| ⑤ 치유 Heal | **채택하지 않음.** 깨지는 선택자를 자동 치유하는 대신 `data-testid`+가드로 환각을 원천 차단하고, 요소가 없으면 `CATALOG_GAP`으로 사용자에게 카탈로그 수정을 요청한다. 실행 중 요소를 못 찾으면 실패로 두고, 실패 분석이 비슷한 요소를 원인 후보로 제안한다 | ADR-005, ADR-015 |
 | ⑥ 분석 Analyze | 규칙 기반 `failureType` 분류 + 교차 검증(화면·API·DB) → LLM 원인 후보 → 근거 검사 | UI-04 · §5 |
 | ⑦ 보고 Report | 자체 플랫폼 UI(실행 모니터·결과 리포트)로 집계·원인·증거 표시. 상용 결과 관리 도구 미사용 | UI-03, UI-04 |
 

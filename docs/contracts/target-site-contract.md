@@ -50,10 +50,12 @@ CSV는 같은 이름의 열(`requirementRefs`는 `;` 구분)을 쓴다.
 | 용도 | 형태 | 규칙 |
 |---|---|---|
 | 업무 API | 사이트 자체 API | 테스트 대상 |
-| DB 확인 조회 | `GET {queryApiBaseUrl}/...` | 읽기 전용. DB 직접 접속은 하지 않는다 (요구사항서 제약조건) |
+| DB 확인 조회 | `GET {queryApiBaseUrl}/...` | 읽기 전용. DB 직접 접속은 하지 않는다 (요구사항서 제약조건). `X-Test-Control-Token` 헤더로 보호 |
 | 데이터 초기화 | `POST {testControlUrl}/reset` `{"seed":"default"}` | 테스트 환경 전용. 공유 토큰 헤더 `X-Test-Control-Token` 필수 |
 | 장애 주입 | `POST {testControlUrl}/faults` `{"faultId":"..."}`, `DELETE {testControlUrl}/faults` | 성공 기준 평가용 (심은 장애 탐지율 80%, 오탐 5% 이하) |
 | 빌드 식별자 | `GET {testControlUrl}/version` → `{"build":"a3f9c21"}` | UI-04 "빌드 a3f9c21" 표시용. 없으면 표시 생략 |
+
+테스트 전용 API는 `/api/test/*` 아래에 두기를 권한다 (`testControlUrl` = `{대상 URL}/api/test`). 팀의 경쟁 분석 문서가 이 격리를 차별점으로 든 경로다. 운영 배포에서는 이 경로를 끈다.
 
 "DB는 읽기 전용으로만 확인한다"는 제약과 "실행마다 데이터를 복원한다"(WBS 4.2.3, 4.3.8)는 요구가 충돌하지 않도록, 검증과 초기화의 경로를 나눴다. 조회 API는 쓰기 기능을 갖지 않고, 초기화는 테스트 전용 API로만 한다.
 

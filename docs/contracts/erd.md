@@ -90,6 +90,7 @@ erDiagram
         varchar type
         jsonb steps
         text expected_result
+        jsonb expected_values
         int version
     }
     generated_spec {

@@ -76,6 +76,8 @@
         { "$ref": "#/$defs/expectVisibleStep" },
         { "$ref": "#/$defs/expectTextStep" },
         { "$ref": "#/$defs/expectCountStep" },
+        { "$ref": "#/$defs/pressStep" },
+        { "$ref": "#/$defs/expectUrlStep" },
         { "$ref": "#/$defs/captureTextStep" },
         { "$ref": "#/$defs/waitForApiStep" },
         { "$ref": "#/$defs/apiRequestStep" },
@@ -155,6 +157,30 @@
         "action": { "const": "expectCount" },
         "testId": { "$ref": "#/$defs/testId" },
         "count": { "type": "integer", "minimum": 0 }
+      },
+      "unevaluatedProperties": false
+    },
+    "pressStep": {
+      "description": "키 입력. 팀 PoC의 press와 같다.",
+      "allOf": [{ "$ref": "#/$defs/stepBase" }],
+      "required": ["action", "testId", "key"],
+      "properties": {
+        "id": true, "description": true,
+        "action": { "const": "press" },
+        "testId": { "$ref": "#/$defs/testId" },
+        "key": { "type": "string", "pattern": "^[A-Za-z0-9+]{1,30}$" }
+      },
+      "unevaluatedProperties": false
+    },
+    "expectUrlStep": {
+      "description": "현재 경로 확인. 로그인 후 이동처럼 화면 요소가 아닌 이동 결과를 검증한다.",
+      "allOf": [{ "$ref": "#/$defs/stepBase" }],
+      "required": ["action", "path"],
+      "properties": {
+        "id": true, "description": true,
+        "action": { "const": "expectUrl" },
+        "path": { "$ref": "#/$defs/sameOriginPath" },
+        "match": { "enum": ["EXACT", "PREFIX"], "default": "PREFIX" }
       },
       "unevaluatedProperties": false
     },
