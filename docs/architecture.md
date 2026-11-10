@@ -29,6 +29,22 @@ flowchart LR
 6. 리포트      UI-04    집계는 백엔드 계산, 실패 원인 후보는 AI 분석
 ```
 
+## 파이프라인 7단계 (업계 공통 루프 ↔ SKRR)
+
+상용 AI 테스트 도구(Functionize·Mabl·testRigor·Testim 등)가 수렴하는 7단계 엔진 루프에 위 흐름을 맞춰 본 것이다. 번호는 설명용이며, 각 단계의 실제 계약은 오른쪽 문서를 따른다. 결과 관리 화면(⑦)은 TestRail 같은 상용 도구를 쓰지 않고 그 방식(실행·케이스·리포트 관리)만 차용해 플랫폼 UI로 자체 구현한다.
+
+| 단계 | SKRR 구현 | 근거 문서 |
+|---|---|---|
+| ① 인식 Perceive | 문서 등록·지식 베이스(sqlite-vec RAG) + 요청 정제(Top 3 근거) | UI-01, UI-02-1 · `skrr-ai-pipeline` §1~2 |
+| ② 생성 Generate | 시나리오·케이스 생성 ↔ 코드 가드(LangGraph, 최대 3회) → TestQuery | UI-02-5 · §3~4, ADR-005·ADR-014 |
+| ③ 안정화 Stabilize | 데이터 초기화(SETUP)·정리(TEARDOWN), `data-testid` 가드로 선택자 고정 | `state-machines.md` 실행 순서 · `target-site-contract.md` reset |
+| ④ 실행 Execute | runner: TestQuery→spec.ts→`tsc`→Playwright 실행 + 증거 수집(스크린샷·trace·HAR) | UI-03 · `runner.md` |
+| ⑤ 치유 Heal | **채택하지 않음.** 깨지는 선택자를 자동 치유하는 대신 `data-testid`+가드로 환각을 원천 차단하고, 요소가 없으면 `CATALOG_GAP`으로 사용자에게 카탈로그 수정을 요청한다 | ADR-005 |
+| ⑥ 분석 Analyze | 규칙 기반 `failureType` 분류 + 교차 검증(화면·API·DB) → LLM 원인 후보 → 근거 검사 | UI-04 · §5 |
+| ⑦ 보고 Report | 자체 플랫폼 UI(실행 모니터·결과 리포트)로 집계·원인·증거 표시. 상용 결과 관리 도구 미사용 | UI-03, UI-04 |
+
+⑤를 비운 것은 이 프로젝트의 설계 선택이다. 상용 도구의 self-heal은 선택자 환각을 사후에 교정하지만, SKRR은 생성 시점에 카탈로그 가드로 막아 같은 문제를 앞단에서 없앤다(ADR-005). 치유로 실패를 "지나가게" 만들어 생기는 불안정(flaky)을 성공 기준의 오탐률 산정에서 배제하려는 의도이기도 하다.
+
 ## 서비스별 책임
 
 | 서비스 | 맡는 일 | 맡지 않는 일 |

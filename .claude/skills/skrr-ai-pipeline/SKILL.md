@@ -7,6 +7,17 @@ description: "SKRR의 AI 서버(Python, FastAPI)와 Playwright 실행기를 구�
 
 실행기(`runner/`) 작업이면 `references/runner.md`를, 평가 작업이면 `references/evaluation.md`를 함께 읽는다.
 
+## 7단계 엔진 루프에서의 위치
+
+이 스킬이 맡는 AI·실행기 작업은 업계 공통 7단계 루프(`docs/architecture.md` "파이프라인 7단계")의 ①②④⑥에 해당한다. 아래 절 번호와 대응한다.
+
+- ① 인식 = §1 지식 베이스, §2 요청 정제
+- ② 생성 = §3 시나리오·가드, §4 TestQuery
+- ④ 실행 = `references/runner.md`
+- ⑥ 분석 = §5 원인 분석
+
+③ 안정화(데이터 초기화·정리)와 ⑦ 보고(플랫폼 UI 집계)는 백엔드가 맡고, 선택자 환각 차단은 ⑤ 치유 대신 §3·§4의 카탈로그 가드가 맡는다(ADR-005). 결과는 TestRail 같은 상용 도구가 아니라 자체 플랫폼 화면(UI-03·UI-04)에 보고한다.
+
 ## 시작 전에
 
 `docs/contracts/ai-api.openapi.yaml`, `docs/contracts/schemas/test-query.schema.json`, `docs/contracts/target-site-contract.md`, 그리고 `harness/references/image (3).png`(파이프라인)를 읽는다. 구조 참고 자료는 `harness/context/infra-baseline.md` 마지막 표에 있다.
