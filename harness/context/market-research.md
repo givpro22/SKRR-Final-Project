@@ -1,6 +1,6 @@
 # 경쟁 AI 테스트 도구 분석 요약
 
-팀이 작성한 HTML 두 개(AI 테스트 툴 내부 동작, AI 테스트 툴 실제 화면, 2026-11-10)를 정리했다. 원본에는 다른 회사의 제품 이미지가 있어 공개 저장소에 커밋하지 않으며, 받은 사람의 `harness/references/`에만 있다. 대상은 Functionize, Mabl, testRigor, KaneAI, Testim, TestSprite, Pcloudy QPilot이다. 근거는 각 사의 공식 문서와 공개 화면이며 실제 계정으로 구동한 결과가 아니다. 마케팅 수치는 검증되지 않았다.
+`harness/references/AI 테스트 툴 내부 동작.html`과 `harness/references/AI 테스트 툴 실제 화면.html`(팀 작성, 2026-11-10)을 정리했다. 대상은 Functionize, Mabl, testRigor, KaneAI, Testim, TestSprite, Pcloudy QPilot이다. 근거는 각 사의 공식 문서와 공개 화면이며 실제 계정으로 구동한 결과가 아니다. 마케팅 수치는 검증되지 않았다.
 
 **용도:** 기능 범위와 화면 구성을 판단할 때 참고한다. 우리 화면 기준은 `harness/references/export/` 캡처이며, 이 자료는 ADR-012 우선순위에서 가장 낮다.
 

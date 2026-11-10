@@ -5,9 +5,6 @@
 .env.*
 !.env.example
 
-# 다른 회사 제품 이미지가 포함된 경쟁 분석 원본 (요약: harness/context/market-research.md)
-harness/references/*.html
-
 # 하네스 실행 중간 산출물
 _workspace/
 _workspace_*/
