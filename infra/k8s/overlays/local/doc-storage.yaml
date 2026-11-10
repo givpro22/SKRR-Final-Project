@@ -1,0 +1,14 @@
+# 로컬 문서 저장소 (STORAGE_TYPE=local). backend가 쓰고 ai가 읽기 전용으로 같은 볼륨을 읽는다.
+# ReadWriteOnce는 "한 노드"에서의 동시 마운트를 허용하므로 kind 단일 노드에서는 두 파드가 함께 쓸 수 있다.
+# 노드가 여럿인 클러스터에서는 쓰지 않는다 (dev overlay는 S3).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: doc-storage
+  labels:
+    app.kubernetes.io/name: backend
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 5Gi

@@ -1,0 +1,54 @@
+# 로컬은 S3 대신 backend의 로컬 파일 저장을 쓴다 (리더 결정, 2026-11-10)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: skrr-backend
+data:
+  STORAGE_TYPE: local
+  LOCAL_STORAGE_DIR: /data/documents
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: skrr-ai
+data:
+  # 지정하면 S3 대신 이 디렉터리에서 s3Key 경로로 문서를 읽는다
+  DOCUMENT_SOURCE_DIR: /data/documents
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+spec:
+  template:
+    spec:
+      securityContext:
+        fsGroup: 10001
+      containers:
+        - name: backend
+          volumeMounts:
+            - name: documents
+              mountPath: /data/documents
+      volumes:
+        - name: documents
+          persistentVolumeClaim:
+            claimName: doc-storage
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai
+spec:
+  template:
+    spec:
+      containers:
+        - name: ai
+          volumeMounts:
+            - name: documents
+              mountPath: /data/documents
+              readOnly: true
+      volumes:
+        - name: documents
+          persistentVolumeClaim:
+            claimName: doc-storage
+            readOnly: true

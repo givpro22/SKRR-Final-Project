@@ -1,0 +1,51 @@
+@import "tailwindcss";
+
+/*
+ * 디자인 토큰. 값은 harness/context/ui-screens.md의 테마 변수 표(캡처 픽셀 추출)를 그대로 옮겼다.
+ * 표에 없는 line-strong, field, warning은 캡처(UI-01 입력창·프로젝트 선택, UI-02-5 검토 필요 배지)에서 추출해 추가했다.
+ */
+@theme {
+  --font-sans: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", "Malgun Gothic", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, Consolas, monospace;
+
+  --color-page: #F6F6F3;
+  --color-surface: #FFFFFF;
+  --color-line: #F1F1EF;
+  --color-line-strong: #BCBEC2;
+  --color-field: #F2F4F6;
+  --color-ink: #14161B;
+  --color-muted: #7E838C;
+  --color-accent: #2F4BFF;
+  --color-accent-soft: #ECEFFF;
+  --color-accent-row: #F7F8FF;
+  --color-focus: #97A5FF;
+  --color-success: #0E7A50;
+  --color-success-soft: #E4F4EC;
+  --color-danger: #B42318;
+  --color-danger-soft: #FCEAE7;
+  --color-danger-row: #FFFBFA;
+  --color-warning: #9A6B1F;
+  --color-warning-soft: #FBF0D9;
+  --color-log: #111318;
+  --color-overlay: rgb(20 22 27 / 0.6);
+
+  --radius-card: 16px;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    @apply bg-page font-sans text-ink antialiased;
+    font-size: 14px;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+}

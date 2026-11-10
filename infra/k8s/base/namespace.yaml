@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: skrr
+  labels:
+    # 파드 보안 표준: 모든 서비스가 비루트·권한 상승 없음으로 실행된다
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest

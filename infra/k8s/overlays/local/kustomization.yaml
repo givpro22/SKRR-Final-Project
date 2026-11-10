@@ -1,0 +1,23 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# kind 로컬 클러스터용. 적용 절차는 infra/README.md
+resources:
+  - ../../base
+  - networkpolicy-local-target.yaml
+  - doc-storage.yaml
+
+# kind load docker-image 로 넣은 로컬 이미지. 레지스트리에서 받지 않는다
+images:
+  - name: skrr/frontend
+    newTag: dev
+  - name: skrr/backend
+    newTag: dev
+  - name: skrr/ai
+    newTag: dev
+  - name: skrr/runner
+    newTag: dev
+
+patches:
+  - path: config-patch.yaml
+  - path: storage-patch.yaml

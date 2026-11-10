@@ -1,0 +1,13 @@
+# kind 로컬 클러스터. Traefik NodePort(30080)를 호스트 127.0.0.1:8088로 연다.
+#   kind create cluster --name skrr --config infra/k8s/kind/cluster.yaml
+# 노드 이미지는 설치된 kind 버전의 기본값을 쓴다. 고정하려면 kind 릴리스 노트의
+# kindest/node 이미지를 다이제스트까지 적는다.
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      - containerPort: 30080
+        hostPort: 8088
+        listenAddress: 127.0.0.1
+        protocol: TCP

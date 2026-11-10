@@ -1,0 +1,100 @@
+# 백엔드: 1 레플리카 (SSE 구독이 메모리에 있음, ADR-007)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: skrr-backend
+  labels:
+    app.kubernetes.io/name: backend
+data:
+  # 저장소 종류 (s3 | local). 클러스터에서는 s3만 쓴다
+  STORAGE_TYPE: s3
+  AWS_REGION: ap-northeast-2
+  S3_BUCKET: ""
+  AI_SERVER_URL: http://ai:8000
+  RUNNER_URL: http://runner:3001
+  # DB 이름은 Secret skrr-postgres의 POSTGRES_DB와 같아야 한다
+  SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/skrr
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  labels:
+    app.kubernetes.io/name: backend
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: backend
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  labels:
+    app.kubernetes.io/name: backend
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: backend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: backend
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: backend
+          image: skrr/backend:dev
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: skrr-backend
+            # SPRING_DATASOURCE_USERNAME, SPRING_DATASOURCE_PASSWORD, TEST_CONTROL_TOKEN,
+            # LOCAL_STORAGE_SIGNING_KEY, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+            # (클러스터 신원 연동 시 AWS 키 생략)
+            - secretRef:
+                name: skrr-backend
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          # 시작이 느리므로 startupProbe가 통과할 때까지 다른 프로브를 미룬다 (최대 150초)
+          startupProbe:
+            httpGet: { path: /actuator/health/readiness, port: http }
+            periodSeconds: 5
+            failureThreshold: 30
+          readinessProbe:
+            httpGet: { path: /actuator/health/readiness, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet: { path: /actuator/health/liveness, port: http }
+            periodSeconds: 15
+            timeoutSeconds: 3
+            failureThreshold: 4
+          resources:
+            requests: { cpu: 250m, memory: 512Mi }
+            limits: { cpu: 1000m, memory: 1Gi }
+          volumeMounts:
+            # multipart 임시 파일(최대 21MB)과 Tomcat 작업 디렉터리
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 512Mi

@@ -1,0 +1,5 @@
+testId,page,label,type,requirementRefs
+cart-add-button,/products/:id,장바구니 담기 버튼,button,FR-CART-01
+cart-item-quantity,/cart,장바구니 상품 수량,text,FR-CART-01;FR-CART-02
+cart-remove-button,/cart,장바구니 삭제 버튼,button,FR-CART-03
+order-total-amount,/checkout,결제 합계 금액,text,FR-ORD-01

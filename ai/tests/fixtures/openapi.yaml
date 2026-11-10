@@ -1,0 +1,72 @@
+openapi: 3.0.3
+info: { title: 목업 쇼핑몰 API, version: 1.0.0 }
+security:
+  - bearerAuth: []
+paths:
+  /api/auth/login:
+    post:
+      operationId: login
+      summary: 로그인
+      security: []
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: 토큰 발급
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Token' }
+        '401': { description: 인증 실패 }
+  /api/cart:
+    get:
+      operationId: getCart
+      summary: 장바구니 조회
+      responses:
+        '200':
+          description: 장바구니
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Cart' }
+  /api/cart/items:
+    post:
+      operationId: addCartItem
+      summary: 장바구니 담기
+      parameters:
+        - { name: X-Trace, in: header, schema: { type: string } }
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CartItemRequest' }
+      responses:
+        201:
+          description: 담김
+        409:
+          description: 재고 부족
+  /api/orders:
+    post:
+      operationId: createOrder
+      summary: 주문 생성
+      responses:
+        '201': { description: 주문 생성됨 }
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer }
+  schemas:
+    LoginRequest:
+      type: object
+      properties: { email: { type: string }, password: { type: string } }
+    Token:
+      type: object
+      properties: { accessToken: { type: string } }
+    CartItemRequest:
+      type: object
+      properties: { productId: { type: integer }, qty: { type: integer } }
+    Cart:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { type: object, properties: { productId: { type: integer }, qty: { type: integer } } }
+        total: { type: integer }

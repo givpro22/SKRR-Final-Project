@@ -1,0 +1,24 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# 네임스페이스와 Service 이름은 다른 서비스 설정과 연결되므로 바꾸지 않는다
+# (.claude/skills/skrr-infra/references/k8s-layout.md)
+namespace: skrr
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: skrr
+    includeSelectors: false
+
+resources:
+  - namespace.yaml
+  - postgres.yaml
+  - backend.yaml
+  - ai.yaml
+  - runner.yaml
+  - frontend.yaml
+  - ingress.yaml
+  - networkpolicy.yaml
+
+# Secret은 매니페스트에 넣지 않는다. 이름과 키는 secret.example.yaml 참고.
+# 로컬은 overlays/local/create-secrets.sh 로 만든다.

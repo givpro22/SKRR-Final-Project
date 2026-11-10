@@ -1,0 +1,173 @@
+# 기본 거부 후 필요한 경로만 연다 (k8s-layout.md "NetworkPolicy")
+#   Ingress 컨트롤러 → frontend:8080
+#   frontend → backend:8080
+#   backend → ai:8000, runner:3001, postgres:5432, 외부 443 (S3, 대상 사이트)
+#   ai → 외부 443 (S3, LLM 제공자)
+#   runner → 외부 443 (대상 사이트, S3 presigned PUT)
+#   모든 파드 → kube-dns:53
+# 외부 443은 사설 대역과 링크 로컬(169.254.0.0/16, 클라우드 메타데이터 포함)을 뺀다.
+# 대상 사이트가 사설망이나 다른 포트에 있으면 overlay에서 그 주소만 추가한다.
+# NetworkPolicy는 이를 지원하는 CNI에서만 동작한다. 적용 후 파드 안에서 차단을 확인할 것.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: frontend
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: frontend
+  policyTypes: [Ingress, Egress]
+  ingress:
+    # Traefik이 설치된 네임스페이스. 다르면 overlay에서 바꾼다
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: traefik
+      ports:
+        - { protocol: TCP, port: 8080 }
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: backend
+      ports:
+        - { protocol: TCP, port: 8080 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backend
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: backend
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: frontend
+      ports:
+        - { protocol: TCP, port: 8080 }
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: ai
+      ports:
+        - { protocol: TCP, port: 8000 }
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: runner
+      ports:
+        - { protocol: TCP, port: 3001 }
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: postgres
+      ports:
+        - { protocol: TCP, port: 5432 }
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16]
+      ports:
+        - { protocol: TCP, port: 443 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ai
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: ai
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: backend
+      ports:
+        - { protocol: TCP, port: 8000 }
+  egress:
+    # S3, 호스팅 LLM API. 자체 호스팅 LLM(LLM_BASE_URL)은 overlay에서 추가한다
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16]
+      ports:
+        - { protocol: TCP, port: 443 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: runner
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: runner
+  policyTypes: [Ingress, Egress]
+  ingress:
+    # 백엔드만 호출할 수 있다
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: backend
+      ports:
+        - { protocol: TCP, port: 3001 }
+  egress:
+    # 클러스터 내부(사설 대역)와 메타데이터 주소는 막고 외부 443만 연다.
+    # FQDN 필터가 없으므로 앱의 RUNNER_ALLOWED_TARGET_HOSTS 검사와 이중으로 막는다.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16]
+      ports:
+        - { protocol: TCP, port: 443 }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: postgres
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: postgres
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: backend
+      ports:
+        - { protocol: TCP, port: 5432 }
+  # 송신은 allow-dns 외에 없음

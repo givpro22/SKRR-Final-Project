@@ -1,0 +1,164 @@
+# SKRR 로컬 개발용 구성 (ADR-008). 쿠버네티스 동작 확인은 infra/k8s + kind로 한다.
+#
+#   cp .env.example .env   # 값을 채운다. .env는 커밋하지 않는다
+#   docker compose up --build
+#   화면: http://localhost:3000
+#
+# 호스트 포트는 모두 127.0.0.1에만 연다. 백엔드·AI·실행기·DB 포트는 호스트에서 서비스를
+# 따로 띄워 개발할 때(Vite 개발 서버, ./mvnw spring-boot:run 등)를 위한 것이다.
+#
+# 네트워크는 쿠버네티스 NetworkPolicy와 같은 방향으로 나눈다.
+#   edge: frontend ↔ backend
+#   core: backend ↔ postgres, ai
+#   exec: backend ↔ runner     (실행기는 DB·AI에 닿지 않는다)
+# Docker 네트워크는 외부 송신을 막지 않으므로 실행기 송신 제한은 k8s에서만 검증된다.
+
+name: skrr
+
+# AWS 변수는 STORAGE_TYPE=s3일 때만 필요하다. 비어 있어도 local 모드는 동작한다.
+x-env-aws: &env-aws
+  AWS_REGION: ${AWS_REGION:-ap-northeast-2}
+  S3_BUCKET: ${S3_BUCKET:-}
+  AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+  AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+
+services:
+  postgres:
+    image: postgres:16.15-alpine3.24
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-skrr}
+      POSTGRES_USER: ${POSTGRES_USER:-skrr}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD를 .env에 설정하세요}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5432:5432"
+    networks: [core]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+    image: skrr/backend:dev
+    environment:
+      <<: *env-aws
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-skrr}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-skrr}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD를 .env에 설정하세요}
+      AI_SERVER_URL: http://ai:8000
+      RUNNER_URL: http://runner:3001
+      TEST_CONTROL_TOKEN: ${TEST_CONTROL_TOKEN:-}
+      # local(기본): 문서를 doc-storage 볼륨에 저장하고 AI가 같은 볼륨에서 읽는다. AWS 불필요
+      # s3: 실제 버킷. S3_BUCKET과 AWS 자격 증명이 필요하다
+      STORAGE_TYPE: ${STORAGE_TYPE:-local}
+      LOCAL_STORAGE_DIR: /data/documents
+      LOCAL_STORAGE_SIGNING_KEY: ${LOCAL_STORAGE_SIGNING_KEY:-}
+    volumes:
+      - doc-storage:/data/documents
+    ports:
+      - "127.0.0.1:8080:8080"
+    networks: [edge, core, exec]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      # JRE 이미지에 curl이 있다고 가정하지 않고 bash /dev/tcp로 확인한다
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /actuator/health/readiness HTTP/1.0\\r\\nHost: localhost\\r\\n\\r\\n' >&3 && grep -q '\"UP\"' <&3"]
+      interval: 10s
+      timeout: 5s
+      start_period: 60s
+      retries: 10
+    restart: unless-stopped
+
+  ai:
+    build:
+      context: ./ai
+    image: skrr/ai:dev
+    environment:
+      <<: *env-aws
+      LLM_PROVIDER: ${LLM_PROVIDER:-fake}
+      LLM_MODEL: ${LLM_MODEL:-}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      KB_DATA_DIR: /data/kb
+      # local 저장소 모드에서만 지정한다. 지정하면 S3 대신 이 디렉터리에서 s3Key 경로로 읽는다
+      DOCUMENT_SOURCE_DIR: ${DOCUMENT_SOURCE_DIR-/data/documents}
+    volumes:
+      - kb-data:/data/kb
+      - doc-storage:/data/documents:ro
+    ports:
+      - "127.0.0.1:8000:8000"
+    networks: [core]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/internal/v1/healthz', timeout=3).status == 200 else 1)"]
+      interval: 10s
+      timeout: 5s
+      start_period: 20s
+      retries: 10
+    restart: unless-stopped
+
+  runner:
+    build:
+      context: ./runner
+    image: skrr/runner:dev
+    # 실행기에는 비밀값을 주지 않는다 (ADR-005)
+    environment:
+      RUNNER_ALLOWED_TARGET_HOSTS: ${RUNNER_ALLOWED_TARGET_HOSTS:-}
+    ports:
+      - "127.0.0.1:3001:3001"
+    networks: [exec]
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    read_only: true
+    tmpfs:
+      - /tmp:size=512m
+    shm_size: 1gb
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 2g
+    cpus: 2
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/internal/v1/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      start_period: 15s
+      retries: 10
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+    image: skrr/frontend:dev
+    ports:
+      - "127.0.0.1:3000:8080"
+    networks: [edge]
+    depends_on:
+      - backend
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /var/cache/nginx
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+networks:
+  edge: {}
+  core: {}
+  exec: {}
+
+volumes:
+  pgdata: {}
+  kb-data: {}
+  # backend local 저장소 ↔ ai 문서 원본 (STORAGE_TYPE=local)
+  doc-storage: {}

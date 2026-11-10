@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+# 로컬 지식 베이스 파일
+data/
+*.sqlite
+*.sqlite-journal

@@ -1,0 +1,10 @@
+{
+  "elements": [
+    { "testId": "cart-add-button", "page": "/products/:id", "label": "장바구니 담기 버튼", "type": "button", "requirementRefs": ["FR-CART-01"] },
+    { "testId": "product-qty-input", "page": "/products/:id", "label": "수량 입력", "type": "input", "requirementRefs": ["FR-CART-01"] },
+    { "testId": "cart-item-qty", "page": "/cart", "label": "장바구니 수량", "type": "input", "requirementRefs": ["FR-CART-02"] },
+    { "testId": "cart-total", "page": "/cart", "label": "합계 금액", "type": "text", "requirementRefs": ["FR-CART-02"] },
+    { "testId": "order-submit-button", "page": "/checkout", "label": "주문하기 버튼", "type": "button", "requirementRefs": ["FR-ORD-01"] },
+    { "testId": "coupon-apply-button", "page": "/checkout", "label": "쿠폰 적용 버튼", "type": "button", "requirementRefs": ["FR-CPN-02"] }
+  ]
+}

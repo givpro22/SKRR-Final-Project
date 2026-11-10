@@ -1,0 +1,12 @@
+target
+build
+.gradle
+.idea
+*.iml
+.vscode
+.env
+.env.*
+*.log
+.DS_Store
+Dockerfile
+.dockerignore

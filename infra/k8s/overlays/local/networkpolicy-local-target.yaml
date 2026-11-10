@@ -1,0 +1,27 @@
+# 로컬 전용: 호스트 머신에서 띄운 대상 사이트로 가는 송신을 연다.
+# 기본 정책은 사설 대역을 막으므로 호스트 주소만 /32로 추가한다. 포트는 대상 사이트에 맞춘다.
+#   192.168.65.254 : Docker Desktop(macOS)의 host.docker.internal
+#   172.18.0.1     : Linux Docker의 kind 네트워크 게이트웨이 (docker network inspect kind 로 확인)
+# 실제 주소는 환경마다 다르므로 kind 파드 안에서 getent hosts host.docker.internal 로 확인 후 고친다.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: local-target-site
+spec:
+  podSelector:
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values: [backend, runner]
+  policyTypes: [Egress]
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 192.168.65.254/32
+        - ipBlock:
+            cidr: 172.18.0.1/32
+      ports:
+        - { protocol: TCP, port: 80 }
+        - { protocol: TCP, port: 443 }
+        - { protocol: TCP, port: 3000 }
+        - { protocol: TCP, port: 8081 }

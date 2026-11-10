@@ -1,0 +1,35 @@
+# 외부 노출은 프론트만. Traefik 표준 Ingress + BasicAuth Middleware (ADR-008, ADR-011)
+# Traefik은 클러스터에 별도로 설치한다 (infra/k8s/kind/traefik-values.yaml 참고).
+# 업로드 제한과 SSE 설정은 프론트 nginx에 있다. Traefik은 기본적으로 본문 크기 제한과
+# 응답 버퍼링이 없으므로 여기서는 따로 두지 않는다 (Buffering Middleware를 붙이지 말 것).
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: basic-auth
+spec:
+  basicAuth:
+    # Secret skrr-basic-auth의 users 키 (htpasswd 형식). 값은 저장소에 두지 않는다
+    secret: skrr-basic-auth
+    realm: SKRR
+    # 백엔드로 Authorization 헤더를 넘기지 않는다
+    removeHeader: true
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: frontend
+  annotations:
+    # {네임스페이스}-{Middleware 이름}@kubernetescrd
+    traefik.ingress.kubernetes.io/router.middlewares: skrr-basic-auth@kubernetescrd
+spec:
+  ingressClassName: traefik
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: frontend
+                port:
+                  name: http

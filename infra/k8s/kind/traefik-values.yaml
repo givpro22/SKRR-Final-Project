@@ -1,0 +1,21 @@
+# Traefik Helm 차트 값 (kind 로컬). 차트 v42.3.1 (Traefik v3.7.17) 기준으로 작성했다.
+#   helm repo add traefik https://traefik.github.io/charts
+#   helm install traefik traefik/traefik --version 42.3.1 \
+#     --namespace traefik --create-namespace \
+#     --values infra/k8s/kind/traefik-values.yaml --kube-context kind-skrr
+# 네임스페이스 이름 traefik은 base NetworkPolicy(frontend 수신)와 맞춰져 있다.
+ingressClass:
+  enabled: true
+  isDefaultClass: true
+  name: traefik
+providers:
+  kubernetesCRD:
+    enabled: true
+  kubernetesIngress:
+    enabled: true
+service:
+  spec:
+    type: NodePort
+ports:
+  web:
+    nodePort: 30080

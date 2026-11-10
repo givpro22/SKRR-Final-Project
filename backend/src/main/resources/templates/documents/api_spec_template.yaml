@@ -1,0 +1,77 @@
+# SKRR 기준 문서 템플릿: API 명세서 (OpenAPI 3.x)
+# 업무 API와 DB 확인용 읽기 전용 조회 API를 함께 적는다. 상태 코드별 응답 스키마는 응답 구조 검사의 기준이다.
+# 응답 스키마가 없는 작업은 검사하지 않고 NOT_CHECKED로 표시된다. (docs/contracts/target-site-contract.md)
+openapi: 3.0.3
+info:
+  title: 대상 사이트 API
+  version: 1.0.0
+servers:
+  - url: https://shop.example.test/api
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+  schemas:
+    CartItem:
+      type: object
+      required: [productId, quantity, price]
+      properties:
+        productId: { type: integer }
+        quantity: { type: integer, minimum: 1 }
+        price: { type: integer, description: 원 단위 }
+paths:
+  /auth/login:
+    post:
+      summary: 로그인 (토큰 발급)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string }
+                password: { type: string }
+      responses:
+        '200':
+          description: 로그인 성공
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [accessToken]
+                properties:
+                  accessToken: { type: string }
+        '401': { description: 인증 실패 }
+  /cart/items:
+    post:
+      summary: 장바구니 담기 (FR-CART-01)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CartItem' }
+      responses:
+        '201':
+          description: 담김
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CartItem' }
+  # DB 확인용 읽기 전용 조회 API. GET만 두고 X-Test-Control-Token 헤더로 보호한다.
+  /test/query/cart-items:
+    get:
+      summary: 장바구니 행 조회 (읽기 전용)
+      parameters:
+        - { name: memberEmail, in: query, required: true, schema: { type: string } }
+        - { name: X-Test-Control-Token, in: header, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: 조회 결과
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/CartItem' }

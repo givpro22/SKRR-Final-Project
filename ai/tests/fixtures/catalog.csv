@@ -1,0 +1,4 @@
+testId,page,label,type,requirementRefs
+cart-add-button,/products/:id,장바구니 담기 버튼,button,FR-CART-01
+cart-total,/cart,합계 금액,text,FR-CART-02;FR-CART-01
+header-cart-link,,헤더 장바구니 링크,link,

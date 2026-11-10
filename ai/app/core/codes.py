@@ -1,0 +1,33 @@
+"""계약(ai-api.openapi.yaml)의 오류 코드. 코드는 이 enum으로만 쓰고, 새 값은 계약에 먼저 추가한다.
+
+tests/test_contract_codes.py가 계약 enum과 같은지 확인한다.
+"""
+
+from __future__ import annotations
+
+from enum import StrEnum
+
+
+class AiErrorCode(StrEnum):
+    """FAILED 작업의 error.code"""
+
+    LLM_UNAVAILABLE = "LLM_UNAVAILABLE"
+    LLM_TIMEOUT = "LLM_TIMEOUT"
+    LLM_NOT_CONFIGURED = "LLM_NOT_CONFIGURED"
+    INVALID_LLM_OUTPUT = "INVALID_LLM_OUTPUT"
+    DOCUMENT_DOWNLOAD_FAILED = "DOCUMENT_DOWNLOAD_FAILED"
+    DOCUMENT_CHECKSUM_MISMATCH = "DOCUMENT_CHECKSUM_MISMATCH"
+    DOCUMENT_PARSE_FAILED = "DOCUMENT_PARSE_FAILED"
+    INDEX_WRITE_FAILED = "INDEX_WRITE_FAILED"
+    KNOWLEDGE_BASE_MISSING = "KNOWLEDGE_BASE_MISSING"
+    INTERNAL_ERROR = "INTERNAL_ERROR"
+
+
+class AiProblemCode(StrEnum):
+    """HTTP 오류 응답(problem+json)의 code"""
+
+    INVALID_REQUEST = "INVALID_REQUEST"
+    MISSING_REQUIRED_DOCUMENTS = "MISSING_REQUIRED_DOCUMENTS"
+    DUPLICATE_DOCUMENT_TYPE = "DUPLICATE_DOCUMENT_TYPE"
+    JOB_NOT_FOUND = "JOB_NOT_FOUND"
+    LLM_NOT_CONFIGURED = "LLM_NOT_CONFIGURED"

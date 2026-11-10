@@ -1,0 +1,9 @@
+{
+  "variables": {
+    "memberEmail": "member@example.test",
+    "productId": "1001"
+  },
+  "secrets": {
+    "memberPassword": "여기에-테스트-계정-비밀번호"
+  }
+}

@@ -1,0 +1,8 @@
+# 로컬 설정 값. 비밀이 아닌 값만 둔다 (비밀은 create-secrets.sh)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: skrr-runner
+data:
+  # 호스트 머신에서 띄운 대상 사이트. 배포된 대상 사이트를 쓰면 그 호스트를 추가한다
+  RUNNER_ALLOWED_TARGET_HOSTS: host.docker.internal

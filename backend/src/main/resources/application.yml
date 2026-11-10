@@ -1,0 +1,107 @@
+server:
+  port: ${SERVER_PORT:8080}
+  # 프록시(nginx)의 X-Forwarded-* 로 다운로드 링크의 호스트·스킴·포트를 만든다.
+  # native: Tomcat RemoteIpValve 가 내부 프록시(사설 대역·루프백)에서 온 전달 헤더만 믿는다.
+  # Tomcat 은 X-Forwarded-Host 의 포트를 버리므로 포트는 X-Forwarded-Port 로 받아야 한다.
+  forward-headers-strategy: native
+  shutdown: graceful
+  tomcat:
+    remoteip:
+      # 믿는 프록시 대역(internal-proxies)은 Spring Boot 기본값(10/8, 172.16/12, 192.168/16, 100.64/10,
+      # 169.254/16, 127/8, ::1, fe80::/10, fc00::/7)을 쓴다. 좁히려면 SERVER_TOMCAT_REMOTEIP_INTERNALPROXIES 로 정규식을 준다
+      protocol-header: X-Forwarded-Proto
+      host-header: X-Forwarded-Host
+      port-header: X-Forwarded-Port
+      remote-ip-header: X-Forwarded-For
+    # 21MB를 넘는 요청도 연결을 끊지 않고 413 응답을 돌려주기 위해 본문을 끝까지 읽는다
+    max-swallow-size: 64MB
+
+spring:
+  application:
+    name: skrr-platform-backend
+  threads:
+    virtual:
+      enabled: false
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/skrr}
+    username: ${SPRING_DATASOURCE_USERNAME:skrr}
+    password: ${SPRING_DATASOURCE_PASSWORD:}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  servlet:
+    multipart:
+      # 파일 20MB, 요청 본문 21MB (multipart 오버헤드 포함). docs/architecture.md "업로드와 시간 제한"
+      max-file-size: 20MB
+      max-request-size: 21MB
+  jackson:
+    default-property-inclusion: always
+    serialization:
+      write-dates-as-timestamps: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true
+  health:
+    readinessstate:
+      enabled: true
+    livenessstate:
+      enabled: true
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  paths-to-match: /api/v1/**
+  # ControllerAdvice 의 오류 응답을 모든 API에 붙이지 않는다. API별 오류 응답은 @ApiResponse 로 계약과 맞춘다
+  override-with-generic-response: false
+
+skrr:
+  # V2__seed_default_user.sql 의 사용자 (로그인 없음, ADR-011)
+  default-user-id: 00000000-0000-0000-0000-000000000001
+  ai:
+    base-url: ${AI_SERVER_URL:http://localhost:8000}
+    connect-timeout: 2s
+    read-timeout: 10s
+  runner:
+    base-url: ${RUNNER_URL:http://localhost:3001}
+    connect-timeout: 2s
+    # 대상 사이트 접속 확인은 실행기가 브라우저로 페이지를 여는 시간을 포함한다
+    read-timeout: 30s
+  jobs:
+    polling-enabled: ${JOB_POLLING_ENABLED:true}
+    poll-interval-ms: 2000
+    # 조회가 연속으로 이 횟수만큼 네트워크 오류면 작업을 실패로 끝낸다
+    max-consecutive-poll-errors: 30
+  storage:
+    type: ${STORAGE_TYPE:local}
+    local-dir: ${LOCAL_STORAGE_DIR:./data/storage}
+    # local 저장소의 다운로드 링크 서명 키. 비어 있으면 시작 시 임의 값을 만든다
+    local-signing-key: ${LOCAL_STORAGE_SIGNING_KEY:}
+    presign-ttl: 5m
+    s3:
+      bucket: ${S3_BUCKET:}
+      region: ${AWS_REGION:ap-northeast-2}
+      endpoint: ${S3_ENDPOINT:}
+      path-style: ${S3_PATH_STYLE:false}
+
+---
+spring:
+  config:
+    activate:
+      on-profile: local
+  flyway:
+    locations: classpath:db/migration,classpath:db/dev
