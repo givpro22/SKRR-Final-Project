@@ -17,7 +17,9 @@ AI 기반 통합 테스트 자동화 및 오류 분석 시스템. 프로젝트 �
 | 2026-11-09 | MVP 범위 확정: 로그인 없음, GitHub 입력 제외, PDF는 MVP 이후, 실행 비교 포함 | skills/skrr-frontend, skills/skrr-backend, harness/context, docs | 사용자 결정 |
 | 2026-11-09 | 코드 저장소를 이 저장소로 확정 | harness/context, docs/decisions.md | 사용자 결정 |
 | 2026-11-09 | API 검사 강화: 인증 헤더, 응답 구조 검사, 기대값 필수 | docs/contracts, skills/skrr-ai-pipeline, skills/skrr-backend, skills/skrr-integration-qa, harness/context | 사용자 요청. 토큰 방식 테스트 불가 등 빈틈 발견 |
+| 2026-11-10 | 파이프라인 7단계(업계 공통 루프) 매핑 추가, ⑤ 치유 미채택·결과 관리는 상용 도구 미사용(자체 UI) 명시 | docs/architecture.md, harness/context/project.md, skills/skrr-ai-pipeline | 사용자 요청 |
 | 2026-11-10 | 실행기를 Node로 재확정 (Python PoC 확인 후) | docs/decisions.md, skills/skrr-ai-pipeline | 사용자 결정 |
 | 2026-11-10 | 자가 치유 MVP 제외, 기대값 승인 단계 추가, 경쟁 분석 HTML 커밋 제외 | docs, skills/skrr-ai-pipeline, skills/skrr-backend, skills/skrr-frontend, skills/skrr-integration-qa, harness/context, .gitignore | 사용자 결정 |
 | 2026-11-10 | 경쟁 분석 HTML을 저장소에 포함 (커밋 제외 취소) | .gitignore, harness/context | 사용자 결정 |
 | 2026-11-10 | 경쟁 도구 분석 반영, 전체 검토 수정: ERROR 끝 상태 규칙, press·expectUrl 동작, LLM 출력 모델 분리, 조회 API 인증, 불안정 표시 | harness/context/market-research.md 외 docs, skills | 사용자 요청. 새 참조 자료와 전체 검토 |
+| 2026-11-10 | 7단계 표기 통일: `architecture.md`의 번호를 기준으로 삼고 경쟁 분석 요약과 ⑤ 치유 근거(ADR-015)를 연결 | docs/architecture.md, harness/context/market-research.md | main 병합 중 두 번호 체계 발견 |
