@@ -262,7 +262,8 @@ export interface paths {
         put?: never;
         /**
          * 자연어 테스트 요청 생성 (UI-02-1, FR-02)
-         * @description 지식 베이스가 READY가 아니면 409 KNOWLEDGE_BASE_NOT_READY를 반환한다.
+         * @description 지식 베이스가 READY가 아니면(NOT_BUILT, BUILDING, STALE, FAILED) 409 KNOWLEDGE_BASE_NOT_READY를 반환한다.
+         *     text는 앞뒤 공백을 지운 뒤 1~500자다. 202 뒤 상태는 REFINING이고, AI 서버 정제가 끝나면 AWAITING_SELECTION(후보 채워짐), 실패하면 FAILED(errorMessage)다.
          */
         post: operations["createTestRequest"];
         delete?: never;
@@ -301,7 +302,12 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 후보 1개 선택 또는 직접 입력 후 시나리오 생성 시작 (UI-02-1B, WBS 4.5.6) */
+        /**
+         * 후보 1개 선택 또는 직접 입력 후 시나리오 생성 시작 (UI-02-1B, WBS 4.5.6)
+         * @description 요청이 AWAITING_SELECTION일 때만 받는다. 아니면 409 INVALID_STATE_TRANSITION.
+         *     candidateId가 이 요청의 후보가 아니면 400 VALIDATION_FAILED. 202 뒤 상태는 GENERATING, 끝나면 GENERATED이고 scenarioCount, testCaseCount가 채워진다.
+         *     시나리오는 생성 작업이 끝날 때 한꺼번에 만들어진다 (state-machines.md TestRequest).
+         */
         post: operations["selectRefinedRequest"];
         delete?: never;
         options?: never;
@@ -346,7 +352,8 @@ export interface paths {
         head?: never;
         /**
          * 시나리오 수정 (UI-02-5 연필 아이콘)
-         * @description 내용이 바뀌면 version이 증가하고 상태는 REVIEW_REQUIRED로 돌아간다.
+         * @description 내용이 바뀌면 version이 증가하고 상태는 REVIEW_REQUIRED로 돌아간다 (APPROVED였으면 승인 해제).
+         *     GENERATING, GUARD_RETRY 중에는 409 INVALID_STATE_TRANSITION.
          */
         patch: operations["updateScenario"];
         trace?: never;
@@ -362,7 +369,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 시나리오 승인 (FR-03) */
+        /**
+         * 시나리오 승인 (FR-03)
+         * @description REVIEW_REQUIRED일 때만 승인한다. 다른 상태면 409 INVALID_STATE_TRANSITION.
+         */
         post: operations["approveScenario"];
         delete?: never;
         options?: never;
@@ -381,7 +391,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 시나리오 반려 */
+        /**
+         * 시나리오 반려
+         * @description REVIEW_REQUIRED일 때만 반려한다. 다른 상태면 409 INVALID_STATE_TRANSITION.
+         */
         post: operations["rejectScenario"];
         delete?: never;
         options?: never;
@@ -400,7 +413,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 시나리오 재생성 */
+        /**
+         * 시나리오 재생성
+         * @description REVIEW_REQUIRED, APPROVED, REJECTED, GUARD_FAILED에서 받는다. GENERATING, GUARD_RETRY 중이면 409 INVALID_STATE_TRANSITION.
+         *     시나리오 코드(SC-xx)는 유지하고 version이 증가한다. 기존 케이스는 비활성화되고 새 케이스는 요청 안에서 쓰지 않은 새 TC 번호를 받는다.
+         */
         post: operations["regenerateScenario"];
         delete?: never;
         options?: never;
@@ -426,7 +443,8 @@ export interface paths {
         head?: never;
         /**
          * 테스트 케이스 수정
-         * @description 소속 시나리오의 승인이 해제되어 REVIEW_REQUIRED로 돌아간다.
+         * @description 소속 시나리오의 승인이 해제되어 REVIEW_REQUIRED로 돌아간다. 시나리오가 GENERATING, GUARD_RETRY이거나 케이스가 비활성이면 409 INVALID_STATE_TRANSITION.
+         *     expectedValues 각 항목은 expected와 consistencyOnly(true) 중 하나만 갖고, consistencyOnly면 reason이 필요하다. 어기면 400 VALIDATION_FAILED.
          */
         patch: operations["updateTestCase"];
         trace?: never;
@@ -444,7 +462,12 @@ export interface paths {
         put?: never;
         /**
          * 체크한 승인 시나리오로 테스트 실행 (UI-02-5 "테스트 실행", FR-04, FR-05)
-         * @description 승인되지 않은 시나리오가 포함되면 409 SCENARIO_NOT_APPROVED를 반환한다.
+         * @description - scenarioIds가 이 요청의 시나리오가 아니면 400 VALIDATION_FAILED
+         *     - 승인되지 않은 시나리오가 포함되면 409 SCENARIO_NOT_APPROVED
+         *     - 플랫폼 어디든 진행 중인 실행(PREPARING, RUNNING, CANCELLING)이 있으면 409 RUN_ALREADY_ACTIVE (state-machines.md Run, ADR-023 U3)
+         *     - 프로젝트에 targetUrl이 없으면 409 TARGET_URL_MISSING
+         *     202 뒤 상태는 PREPARING이다. 이때 케이스별 TestQuery 생성과 spec 변환을 하고, 끝나면 RUNNING이 된다.
+         *     대상 사이트·실행기 장애는 시작을 거부하지 않고 실행을 ERROR로 끝낸다.
          */
         post: operations["startRun"];
         delete?: never;
@@ -502,7 +525,10 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 실행 중단 (UI-03 "실행 중단") */
+        /**
+         * 실행 중단 (UI-03 "실행 중단")
+         * @description PREPARING, RUNNING일 때 CANCELLING으로 바꾼다. 이미 끝났거나 CANCELLING이면 409 INVALID_STATE_TRANSITION.
+         */
         post: operations["cancelRun"];
         delete?: never;
         options?: never;
@@ -521,7 +547,13 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** 실패 건 또는 특정 케이스 재실행 (UI-04 "실패 2건 재실행", "이 케이스 재실행") */
+        /**
+         * 실패 건 또는 특정 케이스 재실행 (UI-04 "실패 2건 재실행", "이 케이스 재실행")
+         * @description 새 실행(rerunOfRunId = 원래 실행)을 만든다. 원래 실행이 끝나지 않았으면 409 RUN_NOT_FINISHED, 플랫폼 어디든 진행 중인 실행이 있으면 409 RUN_ALREADY_ACTIVE.
+         *     대상 케이스의 시나리오가 지금 APPROVED가 아니면 409 SCENARIO_NOT_APPROVED. caseResultIds가 이 실행의 것이 아니거나 중복이거나, 대상 케이스가 시나리오 재생성으로 비활성이 됐거나, 비웠는데 FAILED 케이스가 없으면 400 VALIDATION_FAILED.
+         *     프로젝트에 targetUrl이 없으면 409 TARGET_URL_MISSING (startRun과 같음).
+         *     케이스 내용(version)이 그대로면 저장된 TestQuery와 spec을 다시 쓴다.
+         */
         post: operations["rerunRun"];
         delete?: never;
         options?: never;
@@ -604,6 +636,7 @@ export interface paths {
         /**
          * 결과 리포트 (UI-04, FR-06, FR-07)
          * @description 실행이 끝나기 전에는 409 RUN_NOT_FINISHED를 반환한다.
+         *     실패 원인 분석은 실행이 끝난 뒤 비동기로 진행되므로 리포트는 분석 완료 전에도 받을 수 있다. 케이스별 분석 상태는 getCaseResult의 analysisStatus로 본다.
          */
         get: operations["getRunReport"];
         put?: never;
@@ -661,7 +694,10 @@ export interface paths {
             };
             cookie?: never;
         };
-        /** 실행한 Playwright spec 코드 (UI-03 "spec 코드 보기") */
+        /**
+         * 실행한 Playwright spec 코드 (UI-03 "spec 코드 보기", UI-04 실행 증거)
+         * @description 아직 TestQuery 생성·변환 전이면(PREPARING 중이거나 생성 실패) 404 RESOURCE_NOT_FOUND. 비밀값은 spec에 들어 있지 않다.
+         */
         get: operations["getCaseResultSpec"];
         put?: never;
         post?: never;
@@ -743,6 +779,16 @@ export interface components {
         StepKind: "SETUP" | "UI" | "API" | "DB" | "ASSERT" | "TEARDOWN";
         /** @enum {string} */
         StepStatus: "PENDING" | "RUNNING" | "PASSED" | "FAILED" | "SKIPPED";
+        /**
+         * @description 실패 원인 분석 상태. FAILED 케이스만 분석한다 (state-machines.md "실패 원인 분석")
+         * @enum {string}
+         */
+        AnalysisStatus: "NOT_REQUIRED" | "PENDING" | "RUNNING" | "COMPLETED" | "FAILED";
+        /**
+         * @description CATALOG_GAP은 재생성으로 해결되지 않으므로 카탈로그 수정이 필요하다는 뜻이다 (WBS 4.5.5).
+         * @enum {string}
+         */
+        GuardFailureKind: "SCHEMA_INVALID" | "UNKNOWN_REQUIREMENT" | "UNKNOWN_API" | "UNKNOWN_TEST_ID" | "UNKNOWN_VARIABLE" | "NO_ASSERTION" | "MISSING_EXPECTED" | "EXPECTED_NOT_APPROVED" | "CATALOG_GAP";
         /** @enum {string} */
         Verdict: "MATCH" | "MISMATCH" | "NOT_APPLICABLE";
         /** @enum {string} */
@@ -942,8 +988,17 @@ export interface components {
             maxAttempts: 3;
             /** @description 예: 카탈로그에 'cart-remove-button' 요소가 없어 재생성 중 */
             message?: string | null;
+            /** @description 가드 실패에 CATALOG_GAP이 있음. GUARD_FAILED 화면에 카탈로그 수정 필요를 표시한다 */
+            catalogGap: boolean;
+            /** @description 마지막 AI 생성의 가드 실패 목록. 통과했으면 빈 배열. 사람이 수정해 REVIEW_REQUIRED가 돼도 지우지 않는다 (state-machines.md Scenario) */
+            failures: {
+                kind: components["schemas"]["GuardFailureKind"];
+                message: string;
+                /** @example cart-remove-button */
+                subject?: string | null;
+            }[];
         };
-        /** @description 사용자가 승인하는 검증 항목과 기대값 (ADR-017). expected와 consistencyOnly 중 하나만 쓴다. */
+        /** @description 사용자가 승인하는 검증 항목과 기대값 (ADR-017). expected와 consistencyOnly(true) 중 하나만 쓰고, consistencyOnly면 reason이 필수다. 백엔드가 검사해 어기면 400 VALIDATION_FAILED. */
         ExpectedValue: {
             /** @example 무선 이어폰 수량 */
             label: string;
@@ -969,6 +1024,8 @@ export interface components {
             expectedValues: components["schemas"]["ExpectedValue"][];
             order: number;
             version: number;
+            /** @description 시나리오 재생성으로 대체되면 false. 목록(listScenarios)에는 활성 케이스만 나온다 */
+            isActive: boolean;
         };
         TestCaseUpdate: {
             title?: string;
@@ -996,28 +1053,39 @@ export interface components {
             version: number;
             /** Format: date-time */
             approvedAt?: string | null;
+            /** @description 활성 케이스 수 */
             caseCount: number;
             testCases: components["schemas"]["TestCase"][];
         };
         ScenarioUpdate: {
             title?: string;
-            requirementRef?: string;
+            /**
+             * @description 대상 사이트 요구사항 ID(예 FR-CART-01). null을 보내면 지운다. 보내지 않으면 그대로 둔다.
+             *     Scenario.requirementRef와 AI GeneratedScenario.requirementRef처럼 근거 요구사항이 없는 시나리오도 허용한다.
+             *     백엔드는 길이만 검사하고 지식 베이스에 있는 ID인지는 검사하지 않는다(가드 UNKNOWN_REQUIREMENT는 AI 생성 결과에만 적용).
+             *     바뀌면 내용 변경으로 보아 version이 오르고 REVIEW_REQUIRED가 된다.
+             */
+            requirementRef?: string | null;
             scopes?: components["schemas"]["VerificationScope"][];
         };
         ScenarioList: {
             testRequest: components["schemas"]["TestRequest"];
+            /** @description UI-02-5 범례. 상태별 시나리오 수이며 합이 total이다 */
             summary: {
                 total: number;
                 approved: number;
                 reviewRequired: number;
                 guardRetry: number;
+                generating: number;
+                rejected: number;
+                guardFailed: number;
             };
             items: components["schemas"]["Scenario"][];
         };
         RunCreate: {
             scenarioIds: string[];
         };
-        /** @description caseResultIds를 비우면 실패한 케이스 전체를 재실행한다. */
+        /** @description caseResultIds를 비우면 FAILED 케이스 전체를 재실행한다 (UI-04 "실패 N건 재실행"). ERROR 케이스는 caseResultIds로 지정해 재실행한다. */
         RerunRequest: {
             caseResultIds?: string[];
         };
@@ -1036,7 +1104,10 @@ export interface components {
             /** Format: uri */
             targetUrl: string;
             targetBuild?: string | null;
-            /** @example Chromium */
+            /**
+             * @description 브라우저 이름과 버전 (실행기 Execution.browserVersion). UI-04 환경 표시
+             * @example Chromium 130
+             */
             browser: string;
             viewportWidth: number;
             viewportHeight: number;
@@ -1098,11 +1169,15 @@ export interface components {
             cases: components["schemas"]["CaseRunSummary"][];
         };
         RunDetail: components["schemas"]["Run"] & {
+            /** @description 시나리오 단위 집계. passed+failed+error+skipped+cancelled = finishedScenarios, finishedScenarios+running+waiting = totalScenarios */
             progress: {
                 totalScenarios: number;
                 finishedScenarios: number;
                 passed: number;
                 failed: number;
+                error: number;
+                skipped: number;
+                cancelled: number;
                 running: number;
                 waiting: number;
             };
@@ -1161,6 +1236,7 @@ export interface components {
             totalCases: number;
             cases: components["schemas"]["ReportCaseItem"][];
         };
+        /** @description 비교 규칙은 state-machines.md "이전 실행 대비". 비교할 이전 실행이 없으면 previousRunCode가 null이고 세 목록은 빈 배열이다. */
         RunComparison: {
             /** @example RUN-0317 */
             previousRunCode?: string | null;
@@ -1176,6 +1252,7 @@ export interface components {
                 scenariosTotal: number;
                 casesPassed: number;
                 casesTotal: number;
+                /** @description casesPassed / casesTotal × 100 반올림. casesTotal은 이 실행에 포함된 모든 케이스(ERROR, SKIPPED, CANCELLED 포함) */
                 casePassRatePct: number;
                 failedCases: number;
                 /** @description 환경 문제로 판정하지 못한 케이스. 실패 수에 넣지 않는다. */
@@ -1235,13 +1312,21 @@ export interface components {
             failedAttempts: number;
             /** Format: int64 */
             durationMs?: number | null;
+            /** @description AI 분석 결과. 분석 전이면 null */
             severity?: components["schemas"]["Severity"] | null;
+            /** @description 규칙으로 정한 실패 유형(실행기 결과와 교차 검증). AI 분석은 이 값을 바꾸지 않는다 */
             failureType?: components["schemas"]["FailureType"] | null;
             failureMessage?: string | null;
+            analysisStatus: components["schemas"]["AnalysisStatus"];
+            /** @description analysisStatus가 FAILED일 때 사유 */
+            analysisError?: string | null;
+            /** @description AI 분석 결과. 분석 전이면 빈 배열 */
             affectedFeatures: string[];
             firstSeenRunCode?: string | null;
             verifications: components["schemas"]["Verification"][];
+            /** @description 마지막으로 실패한 시도의 단계. 통과했으면 마지막 시도의 단계 */
             reproductionSteps: components["schemas"]["RunStep"][];
+            /** @description AI 분석 결과(rank 순). analysisStatus가 COMPLETED가 아니면 빈 배열 */
             rootCauses: components["schemas"]["RootCauseCandidate"][];
             artifacts: components["schemas"]["ArtifactRef"][];
         };

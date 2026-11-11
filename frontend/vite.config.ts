@@ -66,6 +66,8 @@ export default defineConfig(({ mode }) => {
       globals: true,
       setupFiles: ["./src/test/setup.ts"],
       css: false,
+      // 실제 백엔드에 붙는 통합 테스트는 기본 실행에서 뺀다 (npm run test:integration)
+      exclude: ["**/node_modules/**", "**/dist/**", "**/*.integration.test.tsx"],
     },
   };
 });

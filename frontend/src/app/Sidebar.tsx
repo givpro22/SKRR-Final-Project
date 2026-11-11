@@ -9,7 +9,7 @@ import {
   Sparkles,
   type LucideIcon,
 } from "lucide-react";
-import { NavLink, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useKnowledgeBase } from "@/api/queries/knowledgeBase";
 import { useCurrentUser, useProjects } from "@/api/queries/projects";
 import type { KnowledgeBaseStatus } from "@/api/types";
@@ -20,14 +20,16 @@ interface NavItem {
   icon: LucideIcon;
   /** 프로젝트 아래 경로. 없으면 요청·실행을 고른 뒤에 열 수 있는 화면이다. */
   to?: string;
+  /** 활성으로 보일 경로 (예: requests/:id/scenarios도 시나리오 승인) */
+  match?: RegExp;
 }
 
 const navItems: NavItem[] = [
-  { label: "문서 · 지식", icon: FolderOpen, to: "documents" },
-  { label: "테스트 요청", icon: Sparkles, to: "requests" },
-  { label: "시나리오 승인", icon: ListChecks },
-  { label: "실행 모니터", icon: CirclePlay },
-  { label: "리포트", icon: FileChartColumn },
+  { label: "문서 · 지식", icon: FolderOpen, to: "documents", match: /\/documents$/ },
+  { label: "테스트 요청", icon: Sparkles, to: "requests", match: /\/requests$/ },
+  { label: "시나리오 승인", icon: ListChecks, to: "scenarios", match: /\/scenarios$/ },
+  { label: "실행 모니터", icon: CirclePlay, to: "monitor", match: /\/monitor$/ },
+  { label: "리포트", icon: FileChartColumn, to: "report", match: /\/report$/ },
 ];
 
 const kbDotClass: Record<KnowledgeBaseStatus, string> = {
@@ -39,6 +41,7 @@ const kbDotClass: Record<KnowledgeBaseStatus, string> = {
 };
 
 export function Sidebar({ projectId }: { projectId: string }) {
+  const { pathname } = useLocation();
   return (
     <aside className="sticky top-0 flex h-screen w-62 shrink-0 flex-col border-r border-line bg-surface px-4 pt-6 pb-5">
       <div className="flex items-center gap-3 px-2">
@@ -67,26 +70,26 @@ export function Sidebar({ projectId }: { projectId: string }) {
               <span
                 key={item.label}
                 aria-disabled="true"
-                title="테스트 요청을 선택하면 열 수 있습니다"
+                title="실행이 끝나면 열 수 있습니다"
                 className="flex h-[38px] cursor-not-allowed items-center gap-3 rounded-xl px-3 text-sm text-muted"
               >
                 {inner}
               </span>
             );
           }
+          const active = item.match?.test(pathname) ?? false;
           return (
-            <NavLink
+            <Link
               key={item.label}
               to={`/projects/${projectId}/${item.to}`}
-              className={({ isActive }) =>
-                clsx(
-                  "flex h-[38px] items-center gap-3 rounded-xl px-3 text-sm transition-colors",
-                  isActive ? "bg-accent-soft font-semibold text-accent" : "text-ink/80 hover:bg-page",
-                )
-              }
+              aria-current={active ? "page" : undefined}
+              className={clsx(
+                "flex h-[38px] items-center gap-3 rounded-xl px-3 text-sm transition-colors",
+                active ? "bg-accent-soft font-semibold text-accent" : "text-ink/80 hover:bg-page",
+              )}
             >
               {inner}
-            </NavLink>
+            </Link>
           );
         })}
       </nav>

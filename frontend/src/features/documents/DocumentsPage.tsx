@@ -341,15 +341,16 @@ export function DocumentsPage() {
             </Button>
           </>
         }
-      >
-        {deleting && (
-          <>
-            <span className="font-mono text-ink">{deleting.originalFilename}</span>
-            <br />
-            삭제하면 지식 베이스를 다시 구축해야 합니다.
-          </>
-        )}
-      </Modal>
+        description={
+          deleting && (
+            <>
+              <span className="font-mono text-ink">{deleting.originalFilename}</span>
+              <br />
+              삭제하면 지식 베이스를 다시 구축해야 합니다.
+            </>
+          )
+        }
+      />
     </>
   );
 }

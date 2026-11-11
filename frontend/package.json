@@ -16,7 +16,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "generate:api": "node scripts/generate-api.mjs",
-    "check:api": "node scripts/generate-api.mjs --check"
+    "check:api": "node scripts/generate-api.mjs --check",
+    "test:integration": "vitest run --config vitest.integration.config.ts"
   },
   "msw": {
     "workerDirectory": [

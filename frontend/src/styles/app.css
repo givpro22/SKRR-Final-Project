@@ -27,6 +27,15 @@
   --color-warning: #9A6B1F;
   --color-warning-soft: #FBF0D9;
   --color-log: #111318;
+  /* UI-03 실시간 로그 패널 안쪽 색 (캡처 추출) */
+  --color-log-line: #1B1E25;
+  --color-log-text: #C9CBD0;
+  --color-log-muted: #6C717B;
+  --color-log-api: #F5C26B;
+  --color-log-ui: #93A4FF;
+  --color-log-assert: #4ADE80;
+  --color-log-db: #C49BFF;
+  --color-log-danger: #FF8A80;
   --color-overlay: rgb(20 22 27 / 0.6);
 
   --radius-card: 16px;
