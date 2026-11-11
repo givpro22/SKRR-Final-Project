@@ -88,6 +88,8 @@ services:
       EMBEDDING_MODEL: ${EMBEDDING_MODEL:-}
       LLM_BASE_URL: ${LLM_BASE_URL:-}
       LLM_API_KEY: ${LLM_API_KEY:-}
+      # 개발·QA 전용. LLM_PROVIDER=fake일 때 가짜 호출마다 기다린다(ms, 0~30000). 비우면 0
+      FAKE_LLM_DELAY_MS: ${FAKE_LLM_DELAY_MS:-}
       KB_DATA_DIR: /data/kb
       # local 저장소 모드에서만 지정한다. 지정하면 S3 대신 이 디렉터리에서 s3Key 경로로 읽는다
       DOCUMENT_SOURCE_DIR: ${DOCUMENT_SOURCE_DIR-/data/documents}
@@ -118,8 +120,10 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     read_only: true
-    tmpfs:
-      - /tmp:size=512m
+    # 실행 증거(trace, HAR, 스크린샷)를 백엔드가 가져갈 때까지 최소 30분 보관한다 (ADR-023).
+    # tmpfs는 컨테이너 메모리 제한에 포함되므로 k8s(emptyDir, 디스크)처럼 볼륨을 쓴다
+    volumes:
+      - runner-tmp:/tmp
     shm_size: 1gb
     cap_drop: [ALL]
     security_opt:
@@ -162,3 +166,5 @@ volumes:
   kb-data: {}
   # backend local 저장소 ↔ ai 문서 원본 (STORAGE_TYPE=local)
   doc-storage: {}
+  # 실행기 임시 파일과 보관 중인 증거. 지워도 된다
+  runner-tmp: {}

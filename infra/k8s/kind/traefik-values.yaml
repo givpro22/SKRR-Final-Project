@@ -19,3 +19,9 @@ service:
 ports:
   web:
     nodePort: 30080
+    transport:
+      respondingTimeouts:
+        # 요청 전체(본문 포함)를 읽는 제한. 기본 60초는 느린 회선의 21MB 업로드를 끊을 수 있다
+        readTimeout: 300s
+        # 응답 쓰기 제한. SSE(최대 3600초)가 끊기지 않도록 기본값 0(제한 없음)을 명시한다
+        writeTimeout: 0s

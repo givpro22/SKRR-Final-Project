@@ -6,3 +6,11 @@ metadata:
 data:
   # 호스트 머신에서 띄운 대상 사이트. 배포된 대상 사이트를 쓰면 그 호스트를 추가한다
   RUNNER_ALLOWED_TARGET_HOSTS: host.docker.internal
+# 개발·QA에서 중간 상태를 보려면 skrr-ai에 가짜 LLM 지연을 준다 (ms, 0~30000). base에는 넣지 않는다.
+# ---
+# apiVersion: v1
+# kind: ConfigMap
+# metadata:
+#   name: skrr-ai
+# data:
+#   FAKE_LLM_DELAY_MS: "1500"

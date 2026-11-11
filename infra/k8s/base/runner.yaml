@@ -1,5 +1,6 @@
 # 실행기: LLM 출력에서 파생된 동작을 실행하므로 가장 엄격하게 격리한다 (ADR-005)
-# - Secret을 주지 않는다 (DB, AWS, LLM 키 없음). 증거는 백엔드가 준 presigned URL로 올린다
+# - Secret을 주지 않는다 (DB, AWS, LLM 키 없음). 증거 파일은 실행기가 /tmp에 보관하고
+#   백엔드가 3001번으로 가져간다 (ADR-023, 최소 30분 보관)
 # - 서비스 어카운트 토큰 없음, 비루트, 권한 상승 없음, 루트 파일시스템 읽기 전용
 # - 송신 제한은 networkpolicy.yaml
 apiVersion: v1
@@ -93,7 +94,7 @@ spec:
             requests: { cpu: 500m, memory: 1Gi }
             limits: { cpu: 2000m, memory: 2Gi }
           volumeMounts:
-            # spec 파일, trace, HAR, 스크린샷 임시 저장
+            # spec 파일, 그리고 백엔드가 가져갈 때까지 보관하는 trace, HAR, 스크린샷
             - name: tmp
               mountPath: /tmp
             # Chromium 공유 메모리. 메모리 제한에 포함된다
