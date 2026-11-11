@@ -37,7 +37,7 @@ Ingress 컨트롤러 → frontend:80
 frontend → backend:8080
 backend → ai:8000, runner:3001, postgres:5432, 대상 사이트, S3(443)
 ai → S3(443), LLM 제공자
-runner → 대상 사이트, S3(443)
+runner → 대상 사이트 (증거 파일은 backend가 runner:3001에서 가져간다, ADR-023)
 모든 파드 → kube-dns:53
 ```
 

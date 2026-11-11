@@ -6,7 +6,8 @@ info:
     백엔드 ↔ 실행기 계약 초안. 클러스터 내부 전용이며 백엔드만 호출할 수 있다.
     실행기는 임의 코드를 받지 않는다. TestQuery를 받아 직접 spec으로 변환해 실행하므로,
     LLM 출력이 코드로 곧장 실행되는 경로가 없다.
-    DB 자격 증명과 AWS 키를 갖지 않으며, 실행 증거는 백엔드가 준 presigned URL로 올린다.
+    DB 자격 증명과 AWS 키를 갖지 않으며 S3와 백엔드로 나가지 않는다. 실행 증거(스크린샷, trace, HAR)는 실행기가 보관하고
+    백엔드가 getExecutionArtifact로 가져가 저장소(S3 또는 local)에 둔다 (ADR-005, ADR-023 U1).
 servers:
   - url: /internal/v1
 paths:
@@ -90,7 +91,12 @@ paths:
     post:
       operationId: startExecution
       summary: 테스트 케이스 1회 실행 (WBS 4.6.2)
-      description: 실행기는 한 번에 하나만 실행한다. 실행 중이면 409 RUNNER_BUSY를 반환한다.
+      description: |
+        실행기는 전체에서 한 번에 하나만 실행한다. 실행 중이면 409 RUNNER_BUSY를 반환하며, 백엔드는 이를 케이스 오류로 보지 않고 기다렸다 다시 보낸다.
+        testQuery.variables에는 백엔드가 TEST_DATA의 값을 채워 보내고, 비밀값은 secretVariables로 따로 보낸다.
+        실행기는 비밀값을 spec 문자열, 로그, 이벤트, 결과에 넣지 않는다 (값은 ***로 바꾼다).
+        재현 시도(attempt)마다 새 executionId로 따로 호출한다.
+        실행기는 testQuery를 renderSpec과 같은 렌더러로 spec 파일로 만든 뒤 Playwright 테스트 러너로 실행한다. TestQuery를 직접 해석해 실행하지 않는다 (ADR-005).
       requestBody:
         required: true
         content:
@@ -103,12 +109,12 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Execution' }
         '409':
-          description: 다른 실행 진행 중
+          description: 다른 실행 진행 중(RUNNER_BUSY) 또는 같은 executionId로 이미 시작함(DUPLICATE_EXECUTION)
           content:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
         '422':
-          description: TestQuery 스키마 위반 또는 허용되지 않은 대상 URL
+          description: 본문 형식 오류(INVALID_REQUEST), TestQuery 스키마 위반(INVALID_TEST_QUERY), 허용되지 않은 대상 URL(TARGET_NOT_ALLOWED)
           content:
             application/problem+json:
               schema: { $ref: '#/components/schemas/Problem' }
@@ -127,7 +133,11 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Execution' }
-        '404': { description: 실행 없음 }
+        '404':
+          description: 실행 없음 (EXECUTION_NOT_FOUND)
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
   /executions/{executionId}/events:
     parameters:
       - name: executionId
@@ -143,7 +153,49 @@ paths:
           content:
             text/event-stream:
               schema: { $ref: '#/components/schemas/ExecutionEvent' }
-        '404': { description: 실행 없음 }
+        '404':
+          description: 실행 없음 (EXECUTION_NOT_FOUND)
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+  /executions/{executionId}/artifacts/{name}:
+    parameters:
+      - name: executionId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: name
+        in: path
+        required: true
+        description: 'Execution.artifacts[].name. trace.zip, network.har, step-{order}.png'
+        schema: { type: string, pattern: '^(trace\.zip|network\.har|step-[0-9]{1,3}\.png)$' }
+    get:
+      operationId: getExecutionArtifact
+      summary: 실행 증거 파일 받기 (백엔드 전용, ADR-023 U1)
+      description: |
+        스크린샷(step-{order}.png)은 screenshot 이벤트를 보낸 뒤부터 받을 수 있다. UI-03 현재 화면을 갱신하려면 백엔드가 이벤트를 받는 즉시 가져간다.
+        trace.zip, network.har는 실행이 끝난 뒤(Execution.status가 끝 상태)에만 받을 수 있고, 그 전에는 409 ARTIFACT_NOT_READY.
+        실행기는 끝난 실행의 파일을 최소 30분 보관한 뒤 지울 수 있다. 백엔드는 실행이 끝나면 바로 가져간다. 지워졌거나 없는 파일은 404.
+      responses:
+        '200':
+          description: 파일 본문
+          content:
+            image/png:
+              schema: { type: string, format: binary }
+            application/zip:
+              schema: { type: string, format: binary }
+            application/json:
+              schema: { type: string, format: binary, description: HAR (JSON) }
+        '404':
+          description: 실행 없음(EXECUTION_NOT_FOUND) 또는 파일 없음, 보관 기간이 지남 포함(ARTIFACT_NOT_FOUND)
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '409':
+          description: 아직 만들어지지 않은 파일 (ARTIFACT_NOT_READY)
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
   /executions/{executionId}/cancel:
     parameters:
       - name: executionId
@@ -155,7 +207,11 @@ paths:
       summary: 실행 중단 (브라우저 종료까지 10초 이내)
       responses:
         '202': { description: 중단 요청됨 }
-        '404': { description: 실행 없음 }
+        '404':
+          description: 실행 없음 (EXECUTION_NOT_FOUND)
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
 components:
   schemas:
     Problem:
@@ -164,7 +220,7 @@ components:
       properties:
         title: { type: string }
         status: { type: integer }
-        code: { type: string, examples: [INVALID_REQUEST, RUNNER_BUSY, INVALID_TEST_QUERY, TARGET_NOT_ALLOWED] }
+        code: { type: string, examples: [INVALID_REQUEST, RUNNER_BUSY, DUPLICATE_EXECUTION, INVALID_TEST_QUERY, TARGET_NOT_ALLOWED, EXECUTION_NOT_FOUND, ARTIFACT_NOT_FOUND, ARTIFACT_NOT_READY] }
         detail: { type: string }
     CompileStatus: { type: string, enum: [PASSED, FAILED] }
     ExecutionStatus: { type: string, enum: [QUEUED, RUNNING, PASSED, FAILED, ERROR, CANCELLED] }
@@ -187,7 +243,7 @@ components:
           items: { type: string }
     ExecutionRequest:
       type: object
-      required: [executionId, baseUrl, testQuery, viewport, timeoutMs, uploads]
+      required: [executionId, baseUrl, testQuery, viewport, timeoutMs]
       properties:
         executionId: { type: string, format: uuid }
         baseUrl:
@@ -205,17 +261,7 @@ components:
           properties:
             width: { type: integer, default: 1280 }
             height: { type: integer, default: 800 }
-        timeoutMs: { type: integer, minimum: 1000, maximum: 300000, default: 120000 }
-        uploads:
-          type: object
-          description: 백엔드가 발급한 S3 presigned PUT URL. stepScreenshots는 step 수만큼 준다.
-          required: [trace, har, stepScreenshots]
-          properties:
-            trace: { type: string, format: uri }
-            har: { type: string, format: uri }
-            stepScreenshots:
-              type: array
-              items: { type: string, format: uri }
+        timeoutMs: { type: integer, minimum: 1000, maximum: 300000, default: 120000, description: '실행 전체 시간 제한. 넘으면 FAILED + failureType TIMEOUT (state-machines.md Run)' }
     StepResult:
       type: object
       required: [stepId, order, kind, title, status]
@@ -252,7 +298,9 @@ components:
         executionId: { type: string, format: uuid }
         status: { $ref: '#/components/schemas/ExecutionStatus' }
         durationMs: { type: integer }
+        browserVersion: { type: string, description: '실행한 브라우저 이름과 버전. 예: Chromium 130.0.6723.31' }
         failureType:
+          description: 실행기가 규칙으로 정한 실패 유형 (요소 없음, 시간 초과, 상태 코드, 응답 구조, 기대값). 교차 검증 불일치(DATA_MISMATCH)는 백엔드가 정한다
           oneOf:
             - $ref: '#/components/schemas/FailureType'
             - type: 'null'
@@ -270,19 +318,71 @@ components:
         consoleErrors:
           type: array
           items: { type: string }
-        uploadedArtifacts:
+        artifacts:
           type: array
+          description: 실행기가 보관 중인 증거 파일. 백엔드가 getExecutionArtifact로 가져간다
           items:
             type: object
-            required: [kind, url]
+            required: [kind, name, contentType]
             properties:
               kind: { type: string, enum: [TRACE, HAR, SCREENSHOT] }
-              url: { type: string, format: uri }
-              stepId: { type: string }
+              name: { type: string, examples: [step-3.png, trace.zip, network.har] }
+              contentType: { type: string, examples: [image/png, application/zip, application/json] }
+              sizeBytes: { type: integer }
+              stepId: { type: string, description: SCREENSHOT일 때 TestQuery 단계 id }
     ExecutionEvent:
       type: object
+      description: |
+        SSE의 event 이름이 type이고 data가 이 객체다. type별 data 형식은 아래와 같다.
+        status ExecutionStatusData, step ExecutionStepData, api.call ApiCallRecord, screenshot ExecutionScreenshotData, log ExecutionLogData.
+        백엔드는 이를 events.md의 run 이벤트로 바꿔 저장한다. 실행이 끝나면 마지막 status를 보낸 뒤 연결을 닫는다.
       required: [type, occurredAt, data]
       properties:
         type: { type: string, enum: [status, step, api.call, screenshot, log] }
         occurredAt: { type: string, format: date-time }
-        data: { type: object }
+        data:
+          oneOf:
+            - $ref: '#/components/schemas/ExecutionStatusData'
+            - $ref: '#/components/schemas/ExecutionStepData'
+            - $ref: '#/components/schemas/ApiCallRecord'
+            - $ref: '#/components/schemas/ExecutionScreenshotData'
+            - $ref: '#/components/schemas/ExecutionLogData'
+    ExecutionStatusData:
+      type: object
+      required: [status]
+      properties:
+        status: { $ref: '#/components/schemas/ExecutionStatus' }
+        failureType:
+          description: 끝 상태(FAILED, ERROR)를 보내는 마지막 status 이벤트에만. Execution.failureType과 같은 값
+          oneOf:
+            - $ref: '#/components/schemas/FailureType'
+            - type: 'null'
+        failureMessage: { type: [string, 'null'], description: 마지막 status 이벤트에만. Execution.failureMessage와 같은 값 }
+    ExecutionStepData:
+      type: object
+      description: TestQuery 단계 하나의 상태 변화. stepId는 TestQuery의 step id이고, 백엔드가 run_step으로 대응시킨다
+      required: [stepId, order, kind, title, status]
+      properties:
+        stepId: { type: string }
+        order: { type: integer, description: TestQuery steps 안의 순서 (1부터) }
+        kind: { $ref: '#/components/schemas/StepKind' }
+        title: { type: string }
+        status: { $ref: '#/components/schemas/StepStatus' }
+        detail: { type: string }
+        expectedValue: { type: string }
+        actualValue: { type: string }
+    ExecutionScreenshotData:
+      type: object
+      description: 단계가 끝난 뒤 찍은 화면. 이 이벤트를 보낸 뒤부터 getExecutionArtifact로 name 파일을 받을 수 있다
+      required: [stepId, order, name]
+      properties:
+        stepId: { type: string }
+        order: { type: integer }
+        name: { type: string, examples: [step-3.png] }
+        pagePath: { type: string, description: '찍을 때의 페이지 경로. 예: /checkout (UI-03 현재 화면 우측 상단)' }
+    ExecutionLogData:
+      type: object
+      required: [kind, message]
+      properties:
+        kind: { $ref: '#/components/schemas/StepKind' }
+        message: { type: string, description: 비밀값은 ***로 바꾼 문장 }

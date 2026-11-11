@@ -11,7 +11,7 @@
     "testCaseCode": { "type": "string", "pattern": "^TC-[0-9]{2,4}$" },
     "title": { "type": "string", "minLength": 1, "maxLength": 200 },
     "variables": {
-      "description": "{{name}} 형식으로 참조하는 테스트 데이터 값. {{name}}은 path, value, body, headers, expected에 쓸 수 있고 변수, 비밀 변수, 앞 단계의 캡처 값 순서로 찾는다. 이름이 겹치면 가드가 거부한다.",
+      "description": "{{name}} 형식으로 참조하는 테스트 데이터 값. {{name}}은 path, value, body, headers, expected에 쓸 수 있고 변수, 비밀 변수, 앞 단계의 캡처 값 순서로 찾는다. 이름이 겹치면 가드가 거부한다. AI 서버가 만든 TestQuery와 저장본(generated_spec)에서는 비어 있고, 실행할 때 백엔드가 TEST_DATA 값을 채워 startExecution에 보낸다. 실행기는 값을 spec 문자열에 넣지 않고 실행 시 주입한다.",
       "type": "object",
       "additionalProperties": { "type": "string" }
     },
@@ -203,7 +203,10 @@
         "id": true, "description": true,
         "action": { "const": "waitForApi" },
         "method": { "$ref": "#/$defs/httpMethod" },
-        "path": { "$ref": "#/$defs/sameOriginPath" },
+        "path": {
+          "$ref": "#/$defs/sameOriginPath",
+          "description": "기다릴 응답의 경로. 생성 때 알 수 없는 값은 OpenAPI 경로 템플릿처럼 중괄호 하나 {이름} 세그먼트로 쓰며, 실행기는 그 자리를 '/'가 없는 비어 있지 않은 세그먼트 하나로 맞춘다. 예: /api/orders/{orderId}/cancel. 실제 값이 필요하면 captures로 응답에서 받는다. {{이름}}(중괄호 둘)은 변수 치환이며 먼저 치환한다. 이 규칙은 waitForApi에만 적용하고 apiRequest·goto·expectUrl의 path에는 적용하지 않는다."
+        },
         "trigger": { "$ref": "#/$defs/testId" },
         "expectStatus": { "type": "integer", "minimum": 100, "maximum": 599 },
         "captures": { "$ref": "#/$defs/jsonCaptures" },
@@ -254,7 +257,10 @@
         "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]{0,39}$" },
         "label": { "type": "string" },
         "phase": { "enum": ["BEFORE", "AFTER"] },
-        "path": { "$ref": "#/$defs/sameOriginPath" },
+        "path": {
+          "$ref": "#/$defs/sameOriginPath",
+          "description": "queryApiBaseUrl의 출처(scheme://host:port) 기준 전체 경로. 예: queryApiBaseUrl이 https://shop.test/api/test/query면 /api/test/query/cart-items?memberId={{memberId}}. queryApiBaseUrl의 경로로 시작해야 하며, 아니면 백엔드가 실행하지 않는다 (읽기 전용 조회 API만 부르기 위해)."
+        },
         "jsonPath": { "type": "string", "pattern": "^\\$" },
         "expected": { "type": "string" }
       }

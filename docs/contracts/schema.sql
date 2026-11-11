@@ -2,7 +2,8 @@
 -- 근거: harness/references 요구사항서, WBS 4.1.3, UI-01~UI-04 화면.
 -- 구현 시 backend/src/main/resources/db/migration/V1__init.sql 로 옮긴다.
 -- V1 이후의 변경은 이 파일(최종 상태)과 함께 새 Flyway 마이그레이션(V3 이후)으로 반영한다.
---  * 2026-11-10 2차 결정: document.status에 SKIPPED 추가, project에 대상 확인 결과(상태 코드, 문장) 컬럼 추가.
+--  * 2026-11-10 2차 결정: document.status에 SKIPPED 추가, project에 대상 확인 결과(상태 코드, 문장) 컬럼 추가. (V3)
+--  * 2026-11-10 FR-02~07 사전 점검: test_case.is_active, scenario.guard_failures, case_result.analysis_status, async_job.request_payload 추가. (V4)
 --
 -- 규칙
 --  * 상태값은 ENUM 타입 대신 VARCHAR + CHECK 로 둔다. JPA 매핑과 값 추가 마이그레이션이 단순하기 때문이다.
@@ -117,6 +118,7 @@ CREATE TABLE scenario (
     status           VARCHAR(20) NOT NULL DEFAULT 'GENERATING' CHECK (status IN ('GENERATING','GUARD_RETRY','REVIEW_REQUIRED','APPROVED','REJECTED','GUARD_FAILED')), -- enum:ScenarioStatus
     guard_attempt    SMALLINT NOT NULL DEFAULT 0 CHECK (guard_attempt BETWEEN 0 AND 3),
     guard_message    TEXT,
+    guard_failures   JSONB NOT NULL DEFAULT '[]'::jsonb, -- 마지막 가드 실패 목록 [{kind, message, subject}]. CATALOG_GAP이면 카탈로그 수정 필요
     references_json  JSONB NOT NULL DEFAULT '[]'::jsonb,
     version          INTEGER NOT NULL DEFAULT 1,  -- 내용이 바뀌면 증가, 승인은 초기화
     approved_by      UUID REFERENCES app_user(id),
@@ -140,9 +142,10 @@ CREATE TABLE test_case (
     expected_values  JSONB NOT NULL DEFAULT '[]'::jsonb, -- 사용자가 승인하는 기대값 (ADR-017)
     ord              SMALLINT NOT NULL,
     version          INTEGER NOT NULL DEFAULT 1,
+    is_active        BOOLEAN NOT NULL DEFAULT TRUE,  -- 시나리오 재생성으로 대체되면 FALSE. 실행 기록(case_result)이 참조하므로 지우지 않는다
     created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (test_request_id, code)
+    UNIQUE (test_request_id, code)                   -- 재생성한 케이스는 새 번호를 받는다. 번호는 재사용하지 않는다
 );
 CREATE INDEX idx_test_case_scenario ON test_case (scenario_id, ord);
 
@@ -206,9 +209,11 @@ CREATE TABLE case_result (
     severity            VARCHAR(20) CHECK (severity IN ('LOW','MEDIUM','HIGH','CRITICAL')), -- enum:Severity
     failure_type        VARCHAR(30) CHECK (failure_type IN ('DATA_MISMATCH','ASSERTION_FAILED','ELEMENT_NOT_FOUND','API_ERROR','API_SCHEMA_MISMATCH','TIMEOUT','ENVIRONMENT_ERROR','TEST_CODE_ERROR')), -- enum:FailureType
     failure_message     TEXT,
-    failure_fingerprint VARCHAR(64),                  -- 이전 실행 대비(새로운 실패/계속 실패) 비교용
+    failure_fingerprint VARCHAR(64),                  -- SHA-256 hex. 처음 발생(first_seen) 판정용. 구성은 state-machines.md "실패 원인 분석"
     affected_features   TEXT[] NOT NULL DEFAULT '{}',
     first_seen_run_id   UUID REFERENCES test_run(id),
+    analysis_status     VARCHAR(20) NOT NULL DEFAULT 'NOT_REQUIRED' CHECK (analysis_status IN ('NOT_REQUIRED','PENDING','RUNNING','COMPLETED','FAILED')), -- enum:AnalysisStatus
+    analysis_error      TEXT,
     UNIQUE (scenario_run_id, test_case_id)
 );
 
@@ -301,6 +306,7 @@ CREATE TABLE async_job (
     subject_id       UUID NOT NULL,
     attempt          SMALLINT NOT NULL DEFAULT 1,
     error_message    TEXT,
+    request_payload  JSONB,          -- 작업을 다시 보낼 때 필요한 사용자 입력 (예: 시나리오 재생성 {"feedback": "..."}). 비밀값 금지
     created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );

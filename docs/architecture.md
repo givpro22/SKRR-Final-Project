@@ -13,7 +13,7 @@ flowchart LR
     AI --> V[(sqlite-vec<br/>PVC)]
     AI -->|boto3 읽기| S3[(Amazon S3)]
     BE -->|AWS SDK| S3
-    R -->|presigned PUT| S3
+    BE -->|실행 증거 가져오기| R
     R -->|Chromium| T[대상 사이트<br/>별도 배포]
     BE -->|읽기 전용 조회, 초기화| T
 ```
@@ -96,7 +96,9 @@ run-artifacts/{runId}/{caseResultId}/attempt-{n}/trace.zip | network.har | step-
 | `RUNNER_ALLOWED_TARGET_HOSTS` | runner | | 쉼표 구분. `host`(모든 포트) 또는 `host:port`. 비면 모두 거부 |
 | `CONNECTIVITY_TIMEOUT_MS` | runner | | 연결 확인 HTTP GET 시간 제한. 기본 `10000` |
 
-서비스 내부 튜닝값(backend `SERVER_PORT` `JOB_POLLING_ENABLED`, ai `FAKE_EMBEDDING_DIM` `MAX_RETAINED_JOBS` `LOG_LEVEL`, runner `PORT` `HOST` `LOG_LEVEL`)은 다른 서비스와 이름을 맞출 필요가 없어 각 서비스 설정 파일의 기본값을 기준으로 한다.
+서비스 내부 튜닝값(backend `SERVER_PORT` `JOB_POLLING_ENABLED`, ai `MAX_RETAINED_JOBS` `LOG_LEVEL`, runner `PORT` `HOST` `LOG_LEVEL` `RUNNER_ACTION_TIMEOUT_MS` `RUNNER_ARTIFACT_RETENTION_MS`)은 다른 서비스와 이름을 맞출 필요가 없어 각 서비스 설정 파일의 기본값을 기준으로 한다. runner `RUNNER_ACTION_TIMEOUT_MS`는 요소·응답 대기 1회 시간 제한(기본 `10000`, 넘으면 그 시도는 `FAILED`+`TIMEOUT`), `RUNNER_ARTIFACT_RETENTION_MS`는 끝난 실행의 증거 파일 보관 시간(기본 `1800000`, 이보다 작게 주어도 30분으로 올린다. `getExecutionArtifact`의 최소 30분 보관 계약)이다.
+
+개발·QA 전용(운영 base에 넣지 않음): ai `FAKE_LLM_DELAY_MS`는 가짜 LLM·임베딩 호출마다 기다리는 시간(0~30000ms, 기본 `0`)으로 인덱싱 중·가드 재생성 중 같은 중간 상태를 화면에서 확인할 때 쓴다. ai `FAKE_EMBEDDING_DIM`은 가짜 임베딩 차원(기본 `384`)이다. 둘 다 `LLM_PROVIDER=fake`일 때만 의미가 있다 (ADR-010).
 
 ## 프록시와 전달 헤더
 

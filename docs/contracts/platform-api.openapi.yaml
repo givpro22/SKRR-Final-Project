@@ -325,7 +325,9 @@ paths:
       operationId: createTestRequest
       tags: [test-request]
       summary: 자연어 테스트 요청 생성 (UI-02-1, FR-02)
-      description: 지식 베이스가 READY가 아니면 409 KNOWLEDGE_BASE_NOT_READY를 반환한다.
+      description: |
+        지식 베이스가 READY가 아니면(NOT_BUILT, BUILDING, STALE, FAILED) 409 KNOWLEDGE_BASE_NOT_READY를 반환한다.
+        text는 앞뒤 공백을 지운 뒤 1~500자다. 202 뒤 상태는 REFINING이고, AI 서버 정제가 끝나면 AWAITING_SELECTION(후보 채워짐), 실패하면 FAILED(errorMessage)다.
       requestBody:
         required: true
         content:
@@ -361,6 +363,10 @@ paths:
       operationId: selectRefinedRequest
       tags: [test-request]
       summary: 후보 1개 선택 또는 직접 입력 후 시나리오 생성 시작 (UI-02-1B, WBS 4.5.6)
+      description: |
+        요청이 AWAITING_SELECTION일 때만 받는다. 아니면 409 INVALID_STATE_TRANSITION.
+        candidateId가 이 요청의 후보가 아니면 400 VALIDATION_FAILED. 202 뒤 상태는 GENERATING, 끝나면 GENERATED이고 scenarioCount, testCaseCount가 채워진다.
+        시나리오는 생성 작업이 끝날 때 한꺼번에 만들어진다 (state-machines.md TestRequest).
       requestBody:
         required: true
         content:
@@ -407,7 +413,9 @@ paths:
       operationId: updateScenario
       tags: [scenario]
       summary: 시나리오 수정 (UI-02-5 연필 아이콘)
-      description: 내용이 바뀌면 version이 증가하고 상태는 REVIEW_REQUIRED로 돌아간다.
+      description: |
+        내용이 바뀌면 version이 증가하고 상태는 REVIEW_REQUIRED로 돌아간다 (APPROVED였으면 승인 해제).
+        GENERATING, GUARD_RETRY 중에는 409 INVALID_STATE_TRANSITION.
       requestBody:
         required: true
         content:
@@ -429,6 +437,7 @@ paths:
       operationId: approveScenario
       tags: [scenario]
       summary: 시나리오 승인 (FR-03)
+      description: REVIEW_REQUIRED일 때만 승인한다. 다른 상태면 409 INVALID_STATE_TRANSITION.
       responses:
         '200':
           description: 승인됨
@@ -444,6 +453,7 @@ paths:
       operationId: rejectScenario
       tags: [scenario]
       summary: 시나리오 반려
+      description: REVIEW_REQUIRED일 때만 반려한다. 다른 상태면 409 INVALID_STATE_TRANSITION.
       responses:
         '200':
           description: 반려됨
@@ -459,6 +469,9 @@ paths:
       operationId: regenerateScenario
       tags: [scenario]
       summary: 시나리오 재생성
+      description: |
+        REVIEW_REQUIRED, APPROVED, REJECTED, GUARD_FAILED에서 받는다. GENERATING, GUARD_RETRY 중이면 409 INVALID_STATE_TRANSITION.
+        시나리오 코드(SC-xx)는 유지하고 version이 증가한다. 기존 케이스는 비활성화되고 새 케이스는 요청 안에서 쓰지 않은 새 TC 번호를 받는다.
       requestBody:
         content:
           application/json:
@@ -495,7 +508,9 @@ paths:
       operationId: updateTestCase
       tags: [scenario]
       summary: 테스트 케이스 수정
-      description: 소속 시나리오의 승인이 해제되어 REVIEW_REQUIRED로 돌아간다.
+      description: |
+        소속 시나리오의 승인이 해제되어 REVIEW_REQUIRED로 돌아간다. 시나리오가 GENERATING, GUARD_RETRY이거나 케이스가 비활성이면 409 INVALID_STATE_TRANSITION.
+        expectedValues 각 항목은 expected와 consistencyOnly(true) 중 하나만 갖고, consistencyOnly면 reason이 필요하다. 어기면 400 VALIDATION_FAILED.
       requestBody:
         required: true
         content:
@@ -517,7 +532,13 @@ paths:
       operationId: startRun
       tags: [run]
       summary: 체크한 승인 시나리오로 테스트 실행 (UI-02-5 "테스트 실행", FR-04, FR-05)
-      description: 승인되지 않은 시나리오가 포함되면 409 SCENARIO_NOT_APPROVED를 반환한다.
+      description: |
+        - scenarioIds가 이 요청의 시나리오가 아니면 400 VALIDATION_FAILED
+        - 승인되지 않은 시나리오가 포함되면 409 SCENARIO_NOT_APPROVED
+        - 플랫폼 어디든 진행 중인 실행(PREPARING, RUNNING, CANCELLING)이 있으면 409 RUN_ALREADY_ACTIVE (state-machines.md Run, ADR-023 U3)
+        - 프로젝트에 targetUrl이 없으면 409 TARGET_URL_MISSING
+        202 뒤 상태는 PREPARING이다. 이때 케이스별 TestQuery 생성과 spec 변환을 하고, 끝나면 RUNNING이 된다.
+        대상 사이트·실행기 장애는 시작을 거부하지 않고 실행을 ERROR로 끝낸다.
       requestBody:
         required: true
         content:
@@ -577,6 +598,7 @@ paths:
       operationId: cancelRun
       tags: [run]
       summary: 실행 중단 (UI-03 "실행 중단")
+      description: PREPARING, RUNNING일 때 CANCELLING으로 바꾼다. 이미 끝났거나 CANCELLING이면 409 INVALID_STATE_TRANSITION.
       responses:
         '202':
           description: 중단 요청됨
@@ -592,6 +614,11 @@ paths:
       operationId: rerunRun
       tags: [run]
       summary: 실패 건 또는 특정 케이스 재실행 (UI-04 "실패 2건 재실행", "이 케이스 재실행")
+      description: |
+        새 실행(rerunOfRunId = 원래 실행)을 만든다. 원래 실행이 끝나지 않았으면 409 RUN_NOT_FINISHED, 플랫폼 어디든 진행 중인 실행이 있으면 409 RUN_ALREADY_ACTIVE.
+        대상 케이스의 시나리오가 지금 APPROVED가 아니면 409 SCENARIO_NOT_APPROVED. caseResultIds가 이 실행의 것이 아니거나 중복이거나, 대상 케이스가 시나리오 재생성으로 비활성이 됐거나, 비웠는데 FAILED 케이스가 없으면 400 VALIDATION_FAILED.
+        프로젝트에 targetUrl이 없으면 409 TARGET_URL_MISSING (startRun과 같음).
+        케이스 내용(version)이 그대로면 저장된 TestQuery를 다시 쓰고(AI 호출 없음), spec은 실행 전에 다시 변환한다 (state-machines.md Run).
       requestBody:
         content:
           application/json:
@@ -688,7 +715,9 @@ paths:
       operationId: getRunReport
       tags: [report]
       summary: 결과 리포트 (UI-04, FR-06, FR-07)
-      description: 실행이 끝나기 전에는 409 RUN_NOT_FINISHED를 반환한다.
+      description: |
+        실행이 끝나기 전에는 409 RUN_NOT_FINISHED를 반환한다.
+        실패 원인 분석은 실행이 끝난 뒤 비동기로 진행되므로 리포트는 분석 완료 전에도 받을 수 있다. 케이스별 분석 상태는 getCaseResult의 analysisStatus로 본다.
       responses:
         '200':
           description: 리포트
@@ -733,7 +762,8 @@ paths:
     get:
       operationId: getCaseResultSpec
       tags: [report]
-      summary: 실행한 Playwright spec 코드 (UI-03 "spec 코드 보기")
+      summary: 실행한 Playwright spec 코드 (UI-03 "spec 코드 보기", UI-04 실행 증거)
+      description: 아직 TestQuery 생성·변환 전이면(PREPARING 중이거나 생성 실패) 404 RESOURCE_NOT_FOUND. 비밀값은 spec에 들어 있지 않다.
       responses:
         '200':
           description: spec 코드
@@ -877,6 +907,14 @@ components:
     CaseResultStatus: { type: string, enum: [PENDING, RUNNING, PASSED, FAILED, SKIPPED, CANCELLED, ERROR] }
     StepKind: { type: string, enum: [SETUP, UI, API, DB, ASSERT, TEARDOWN] }
     StepStatus: { type: string, enum: [PENDING, RUNNING, PASSED, FAILED, SKIPPED] }
+    AnalysisStatus:
+      type: string
+      description: 실패 원인 분석 상태. FAILED 케이스만 분석한다 (state-machines.md "실패 원인 분석")
+      enum: [NOT_REQUIRED, PENDING, RUNNING, COMPLETED, FAILED]
+    GuardFailureKind:
+      type: string
+      description: CATALOG_GAP은 재생성으로 해결되지 않으므로 카탈로그 수정이 필요하다는 뜻이다 (WBS 4.5.5).
+      enum: [SCHEMA_INVALID, UNKNOWN_REQUIREMENT, UNKNOWN_API, UNKNOWN_TEST_ID, UNKNOWN_VARIABLE, NO_ASSERTION, MISSING_EXPECTED, EXPECTED_NOT_APPROVED, CATALOG_GAP]
     Verdict: { type: string, enum: [MATCH, MISMATCH, NOT_APPLICABLE] }
     SchemaCheckStatus: { type: string, enum: [PASSED, FAILED, NOT_CHECKED] }
     Severity: { type: string, enum: [LOW, MEDIUM, HIGH, CRITICAL] }
@@ -1068,14 +1106,25 @@ components:
             customText: { type: string, minLength: 1, maxLength: 500 }
     GuardState:
       type: object
-      required: [attempt, maxAttempts]
+      required: [attempt, maxAttempts, catalogGap, failures]
       properties:
         attempt: { type: integer, minimum: 0, maximum: 3 }
         maxAttempts: { type: integer, const: 3 }
         message: { type: [string, 'null'], description: "예: 카탈로그에 'cart-remove-button' 요소가 없어 재생성 중" }
+        catalogGap: { type: boolean, description: 가드 실패에 CATALOG_GAP이 있음. GUARD_FAILED 화면에 카탈로그 수정 필요를 표시한다 }
+        failures:
+          type: array
+          description: 마지막 AI 생성의 가드 실패 목록. 통과했으면 빈 배열. 사람이 수정해 REVIEW_REQUIRED가 돼도 지우지 않는다 (state-machines.md Scenario)
+          items:
+            type: object
+            required: [kind, message]
+            properties:
+              kind: { $ref: '#/components/schemas/GuardFailureKind' }
+              message: { type: string }
+              subject: { type: [string, 'null'], examples: [cart-remove-button] }
     ExpectedValue:
       type: object
-      description: 사용자가 승인하는 검증 항목과 기대값 (ADR-017). expected와 consistencyOnly 중 하나만 쓴다.
+      description: 사용자가 승인하는 검증 항목과 기대값 (ADR-017). expected와 consistencyOnly(true) 중 하나만 쓰고, consistencyOnly면 reason이 필수다. 백엔드가 검사해 어기면 400 VALIDATION_FAILED.
       required: [label]
       properties:
         label: { type: string, examples: [무선 이어폰 수량] }
@@ -1084,7 +1133,7 @@ components:
         reason: { type: string, description: consistencyOnly를 쓴 이유 }
     TestCase:
       type: object
-      required: [id, code, scenarioId, title, type, scopes, expectedResult, expectedValues, order, version]
+      required: [id, code, scenarioId, title, type, scopes, expectedResult, expectedValues, order, version, isActive]
       properties:
         id: { type: string, format: uuid }
         code: { type: string, examples: [TC-12] }
@@ -1106,6 +1155,7 @@ components:
           items: { $ref: '#/components/schemas/ExpectedValue' }
         order: { type: integer }
         version: { type: integer }
+        isActive: { type: boolean, description: 시나리오 재생성으로 대체되면 false. 목록(listScenarios)에는 활성 케이스만 나온다 }
     TestCaseUpdate:
       type: object
       properties:
@@ -1144,7 +1194,7 @@ components:
           items: { $ref: '#/components/schemas/RetrievedReference' }
         version: { type: integer }
         approvedAt: { type: [string, 'null'], format: date-time }
-        caseCount: { type: integer }
+        caseCount: { type: integer, description: 활성 케이스 수 }
         testCases:
           type: array
           items: { $ref: '#/components/schemas/TestCase' }
@@ -1152,7 +1202,14 @@ components:
       type: object
       properties:
         title: { type: string, minLength: 1, maxLength: 200 }
-        requirementRef: { type: string, maxLength: 50 }
+        requirementRef:
+          type: [string, 'null']
+          maxLength: 50
+          description: |
+            대상 사이트 요구사항 ID(예 FR-CART-01). null을 보내면 지운다. 보내지 않으면 그대로 둔다.
+            Scenario.requirementRef와 AI GeneratedScenario.requirementRef처럼 근거 요구사항이 없는 시나리오도 허용한다.
+            백엔드는 길이만 검사하고 지식 베이스에 있는 ID인지는 검사하지 않는다(가드 UNKNOWN_REQUIREMENT는 AI 생성 결과에만 적용).
+            바뀌면 내용 변경으로 보아 version이 오르고 REVIEW_REQUIRED가 된다.
         scopes:
           type: array
           items: { $ref: '#/components/schemas/VerificationScope' }
@@ -1163,12 +1220,16 @@ components:
         testRequest: { $ref: '#/components/schemas/TestRequest' }
         summary:
           type: object
-          required: [total, approved, reviewRequired, guardRetry]
+          description: UI-02-5 범례. 상태별 시나리오 수이며 합이 total이다
+          required: [total, approved, reviewRequired, guardRetry, generating, rejected, guardFailed]
           properties:
             total: { type: integer }
             approved: { type: integer }
             reviewRequired: { type: integer }
             guardRetry: { type: integer }
+            generating: { type: integer }
+            rejected: { type: integer }
+            guardFailed: { type: integer }
         items:
           type: array
           items: { $ref: '#/components/schemas/Scenario' }
@@ -1183,7 +1244,7 @@ components:
           items: { type: string, format: uuid }
     RerunRequest:
       type: object
-      description: caseResultIds를 비우면 실패한 케이스 전체를 재실행한다.
+      description: caseResultIds를 비우면 FAILED 케이스 전체를 재실행한다 (UI-04 "실패 N건 재실행"). ERROR 케이스는 caseResultIds로 지정해 재실행한다.
       properties:
         caseResultIds:
           type: array
@@ -1201,7 +1262,7 @@ components:
         status: { $ref: '#/components/schemas/RunStatus' }
         targetUrl: { type: string, format: uri }
         targetBuild: { type: [string, 'null'] }
-        browser: { type: string, examples: [Chromium] }
+        browser: { type: string, description: 브라우저 이름과 버전 (실행기 Execution.browserVersion). UI-04 환경 표시, examples: ['Chromium 130'] }
         viewportWidth: { type: integer }
         viewportHeight: { type: integer }
         documentVersions:
@@ -1272,12 +1333,16 @@ components:
           properties:
             progress:
               type: object
-              required: [totalScenarios, finishedScenarios, passed, failed, running, waiting]
+              description: 시나리오 단위 집계. passed+failed+error+skipped+cancelled = finishedScenarios, finishedScenarios+running+waiting = totalScenarios
+              required: [totalScenarios, finishedScenarios, passed, failed, error, skipped, cancelled, running, waiting]
               properties:
                 totalScenarios: { type: integer }
                 finishedScenarios: { type: integer }
                 passed: { type: integer }
                 failed: { type: integer }
+                error: { type: integer }
+                skipped: { type: integer }
+                cancelled: { type: integer }
                 running: { type: integer }
                 waiting: { type: integer }
             scenarioRuns:
@@ -1335,6 +1400,7 @@ components:
           items: { $ref: '#/components/schemas/ReportCaseItem' }
     RunComparison:
       type: object
+      description: 비교 규칙은 state-machines.md "이전 실행 대비". 비교할 이전 실행이 없으면 previousRunCode가 null이고 세 목록은 빈 배열이다.
       required: [newFailures, continuingFailures, resolved]
       properties:
         previousRunCode: { type: [string, 'null'], examples: [RUN-0317] }
@@ -1361,7 +1427,7 @@ components:
             scenariosTotal: { type: integer }
             casesPassed: { type: integer }
             casesTotal: { type: integer }
-            casePassRatePct: { type: integer }
+            casePassRatePct: { type: integer, description: 'casesPassed / casesTotal × 100 반올림. casesTotal은 이 실행에 포함된 모든 케이스(ERROR, SKIPPED, CANCELLED 포함)' }
             failedCases: { type: integer }
             errorCases: { type: integer, description: 환경 문제로 판정하지 못한 케이스. 실패 수에 넣지 않는다. }
             crossCheckMismatches: { type: integer }
@@ -1414,7 +1480,7 @@ components:
         createdAt: { type: string, format: date-time }
     CaseResultDetail:
       type: object
-      required: [id, code, title, scenarioCode, scenarioTitle, status, attempts, failedAttempts, affectedFeatures, verifications, reproductionSteps, rootCauses, artifacts]
+      required: [id, code, title, scenarioCode, scenarioTitle, status, attempts, failedAttempts, analysisStatus, affectedFeatures, verifications, reproductionSteps, rootCauses, artifacts]
       properties:
         id: { type: string, format: uuid }
         code: { type: string }
@@ -1427,16 +1493,21 @@ components:
         failedAttempts: { type: integer }
         durationMs: { type: [integer, 'null'], format: int64 }
         severity:
+          description: AI 분석 결과. 분석 전이면 null
           oneOf:
             - $ref: '#/components/schemas/Severity'
             - type: 'null'
         failureType:
+          description: 규칙으로 정한 실패 유형(실행기 결과와 교차 검증). AI 분석은 이 값을 바꾸지 않는다
           oneOf:
             - $ref: '#/components/schemas/FailureType'
             - type: 'null'
         failureMessage: { type: [string, 'null'] }
+        analysisStatus: { $ref: '#/components/schemas/AnalysisStatus' }
+        analysisError: { type: [string, 'null'], description: analysisStatus가 FAILED일 때 사유 }
         affectedFeatures:
           type: array
+          description: AI 분석 결과. 분석 전이면 빈 배열
           items: { type: string }
         firstSeenRunCode: { type: [string, 'null'] }
         verifications:
@@ -1444,9 +1515,11 @@ components:
           items: { $ref: '#/components/schemas/Verification' }
         reproductionSteps:
           type: array
+          description: 마지막으로 실패한 시도의 단계. 통과했으면 마지막 시도의 단계
           items: { $ref: '#/components/schemas/RunStep' }
         rootCauses:
           type: array
+          description: AI 분석 결과(rank 순). analysisStatus가 COMPLETED가 아니면 빈 배열
           items: { $ref: '#/components/schemas/RootCauseCandidate' }
         artifacts:
           type: array

@@ -83,6 +83,7 @@ erDiagram
         text_array scopes
         varchar status
         smallint guard_attempt
+        jsonb guard_failures
         int version
     }
     test_case {
@@ -94,6 +95,7 @@ erDiagram
         text expected_result
         jsonb expected_values
         int version
+        bool is_active
     }
     generated_spec {
         uuid id PK
@@ -128,6 +130,7 @@ erDiagram
         varchar severity
         varchar failure_type
         varchar failure_fingerprint
+        varchar analysis_status
     }
     run_step {
         uuid id PK
@@ -193,6 +196,10 @@ erDiagram
 | 파일 본문은 S3, `artifact`와 `document`는 위치만 저장 | 아키텍처 그림과 같고, DB 크기를 작게 유지한다. 개발용 local 저장소도 같은 키를 상대 경로로 쓴다 (ADR-021) |
 | `document.status`에 `SKIPPED` | 구축이 실패했을 때 원인 문서(`FAILED`)와 다른 문서 때문에 처리하지 않은 문서를 구분한다 (ADR-020) |
 | `project.target_check_status_code`, `target_check_message` | 연결 확인 결과를 새로고침해도 보여 준다. `target_url`이 바뀌면 `target_url_status`와 함께 비운다 (ADR-019) |
+| `test_case.is_active`, TC 번호 재사용 안 함 | 시나리오를 재생성해도 실행 기록(`case_result`)이 옛 케이스를 참조하므로 지우지 않고 비활성으로 둔다. 번호가 겹치지 않아 리포트의 `TC-12`가 항상 같은 케이스를 가리킨다 |
+| `scenario.guard_failures` | GUARD_FAILED 화면에 카탈로그 수정 필요 여부(`CATALOG_GAP`)와 사유를 보여 준다 |
+| `async_job.request_payload` | 백엔드 재시작이나 AI 작업 유실(404) 뒤 다시 보낼 때 DB에 없는 사용자 입력(시나리오 재생성 의견)을 잃지 않게 한다. 다른 테이블에서 다시 만들 수 있는 값과 비밀값은 넣지 않는다 |
+| `case_result.analysis_status` | 실패 원인 분석을 실행 종료와 분리한다. 리포트는 분석을 기다리지 않고 "분석 중"을 표시한다 |
 | `document.summary` 키 고정 | 문서 종류별 개수 키(`requirementCount` 등)를 `platform-api` `Document.summary`에 정의했다. 화면 문구와 등록 요건 판정이 이 키를 읽는다 |
 
 ## 검증 방법
@@ -201,7 +208,7 @@ erDiagram
 python3 .claude/skills/skrr-integration-qa/scripts/check_contracts.py
 ```
 
-`schema.sql`의 CHECK 값과 OpenAPI enum이 다르면 실패한다. `schema.sql`은 최종 상태이고, 백엔드는 V1 이후 변경을 새 Flyway 마이그레이션으로 반영한다 (2026-11-10 2차 결정분은 V3). DDL은 2026-11-09에 임시 PostgreSQL 17에서 적용과 주요 제약 동작을 확인했다. 목표 버전인 16에서는 아직 실행하지 않았다.
+`schema.sql`의 CHECK 값과 OpenAPI enum이 다르면 실패한다. `schema.sql`은 최종 상태이고, 백엔드는 V1 이후 변경을 새 Flyway 마이그레이션으로 반영한다 (2026-11-10 2차 결정분은 V3, FR-02~07 사전 점검분은 V4). DDL은 2026-11-09에 임시 PostgreSQL 17에서 적용과 주요 제약 동작을 확인했다. 목표 버전인 16에서는 아직 실행하지 않았다.
 
 ## 담당자 검토 필요
 

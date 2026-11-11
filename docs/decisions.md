@@ -61,6 +61,8 @@ WBS 4.1.3이 DB 선택을 요구했다. 시나리오와 이벤트에 JSONB가 �
 
 **재확정 (2026-11-10):** 처음 결정 때 하네스는 팀 저장소의 Python 실행기(`agent/runner.py`, TestQuery를 해석 실행)를 비교에 넣지 않았다. 이를 알린 뒤 사용자가 Node와 spec 코드 실행 방식을 다시 확정했다. Python PoC는 동작 대응과 가드 규칙의 참고 자료로만 쓴다.
 
+**실행 방식 확정 (리더, 2026-11-10, M3):** 실행기는 `startExecution`에서 받은 TestQuery를 `renderSpec`과 같은 렌더러로 spec 파일로 만들고, 그 파일을 Playwright 테스트 러너로 실행한다. TestQuery를 직접 해석해 실행하지 않는다. 화면에 보여 주는 spec(`getCaseResultSpec`)과 실제 실행한 코드가 같아야 FR-04 "실행 가능한 코드"와 증거가 일치하기 때문이다. 테스트 데이터 값은 spec 문자열에 넣지 않고 실행 시 주입한다.
+
 **핵심 결정이다.** LLM이 Playwright 코드를 직접 쓰면 두 가지 문제가 있다.
 
 1. FR-04의 "100% 실행 가능, 문법 검사 통과"를 보장할 수 없다.
@@ -75,8 +77,8 @@ AI 서버: 케이스 → TestQuery JSON (허용된 동작만, 카탈로그·명�
 
 선택자는 `data-testid`로 제한한다. 가드가 카탈로그에 있는 요소만 통과시키므로 화면 요소 환각을 차단한다. 실행기는 별도 컨테이너로 두고 다음으로 격리한다.
 
-- 비루트 실행, DB 자격 증명·AWS 키 없음, 증거는 presigned URL로 업로드
-- 수신은 백엔드만, 송신은 허용된 대상과 S3(443)만
+- 비루트 실행, DB 자격 증명·AWS 키 없음. 증거(스크린샷, trace, HAR)는 실행기가 보관하고 백엔드가 `getExecutionArtifact`로 가져간다 (ADR-023 U1, 2026-11-10 변경. 처음에는 presigned URL 업로드였다)
+- 수신은 백엔드만, 송신은 허용된 대상만 (S3·백엔드로 나가지 않음)
 - `RUNNER_ALLOWED_TARGET_HOSTS`에 있는 호스트만 접속 (제외 범위인 운영 시스템 차단)
 - 한 번에 1건 실행, 실행별 임시 디렉터리, 시간 제한
 
@@ -198,6 +200,43 @@ AWS 자격 증명 없이 개발과 통합 검증을 할 수 있게 `STORAGE_TYPE
 - compose와 kind overlay는 local, 쿠버네티스 base는 `s3`이다. S3 호환 저장소(MinIO 등)는 `S3_ENDPOINT`, `S3_PATH_STYLE`로 지정하며 backend와 ai가 같은 이름을 쓴다.
 - 한계: local 저장소는 backend와 ai가 같은 볼륨을 봐야 하므로 단일 노드(kind)에서만 쓴다. 다중 노드나 운영은 S3를 쓴다.
 
+## ADR-022 FR-02~07 계약 보완 (구현 전 점검) — 제안 (하네스, 2026-11-10)
+
+FR-01 구현에서 계약 공백이 늦게 드러난 경험을 반영해, M2~M4 구현 전에 아래를 정했다. 팀이 뒤집으면 이 항목과 해당 계약을 먼저 고친다.
+
+| 항목 | 결정 | 이유 |
+|---|---|---|
+| 실패 원인 분석 시점 | 실행이 끝난 뒤 FAILED 케이스만 비동기 분석. `case_result.analysis_status`로 표시하고 리포트는 기다리지 않음 | LLM 지연이 실행 종료와 리포트를 막지 않게 한다 |
+| 실패 유형 | `failureType`은 규칙(실행기 결과, 교차 검증)으로 정하고 AI는 바꾸지 않음. AI 결과에서 `failureType` 제거 | 아키텍처 ⑥ "규칙 기반 분류 → LLM 원인 후보". 같은 값을 두 곳에서 정하면 어긋난다 |
+| 시나리오 재생성 | 코드 유지, version 증가, 기존 케이스는 비활성(`is_active`), 새 케이스는 새 TC 번호 | 실행 기록이 옛 케이스를 참조하고, 리포트의 TC 번호가 다른 케이스를 가리키면 안 된다 |
+| 가드 실패 정보 | `scenario.guard_failures`, `GuardState.failures`·`catalogGap` | GUARD_FAILED 화면의 "카탈로그 수정 필요" 표시 근거가 계약에 없었다 |
+| 테스트 데이터 값 | TestQuery·spec 저장본에는 넣지 않고 실행마다 백엔드가 채움 | ADR-020으로 TEST_DATA 변경이 STALE을 만들지 않으므로, 값이 저장본에 굳으면 낡은 값으로 실행된다 |
+| 실행기 이벤트 | `ExecutionEvent.data`를 종류별로 정의, `stepId`는 플랫폼 이벤트에서 `RunStep.id` | 형식 없이 `object`였다 |
+| TestQuery 생성 추적 | 실행 작업자 안에서 AI 작업을 직접 조회, `async_job`에 남기지 않음 | 진행은 실행 상태·로그가 담고, 재시작 시 실행을 ERROR로 끝내므로 이어서 조회할 필요가 없다 (backend M3-3, 리더 승인) |
+| spec 재사용 | 같은 케이스 version의 컴파일 통과 TestQuery는 AI 없이 재사용, spec은 실행 전마다 `renderSpec`으로 다시 변환해 렌더러 버전이 다르면 새 `generated_spec`을 저장·연결. 변환 실패면 AI로 새로 생성 | 처음(M3-3)에는 "가장 최근 저장 spec의 렌더러 버전과 비교"였으나, ADR-005 실행 방식 확정(실행 코드 = 보여 주는 spec) 뒤 실행기 렌더러가 바뀌어도 저장 spec과 실제 실행 코드가 어긋나지 않게 바꿨다. 재변환 실패는 3회 중 1회로 센다 (backend 변경, 리더 승인 2026-11-10: ADR-005의 "화면 spec = 실행 코드"를 더 정확히 지킴) |
+| TEARDOWN | 초기화 API(`POST {testControlUrl}/reset`)를 다시 호출. 실패해도 판정은 그대로, 로그만 | 대상 사이트 계약에 정리 API가 없다 (backend M3-3, 리더 승인) |
+| 활성 케이스 없는 시나리오 | 실행하지 않고 `SKIPPED` | 실행할 내용이 없다 (backend M3-3, 리더 승인) |
+| 백엔드 재시작 시 진행 중 실행 | 이어 가지 않고 `ERROR`(중단 요청 중이면 `CANCELLED`) | 실행기 상태와 대상 데이터가 어긋났을 수 있어 이어서 판정하면 신뢰할 수 없다 (backend M3-3, 리더 승인) |
+| 준비 단계 TestQuery 실패 케이스 | `PENDING`에 사유만 두고 실행 차례에 `PENDING → RUNNING → ERROR`(`TEST_CODE_ERROR`) | 전이표에 `PENDING → ERROR`가 없고, 화면 진행 흐름을 다른 케이스와 같게 한다 (backend M3-3, 리더 승인) |
+| 실행기 M3 보완 (ai-engineer 요청, 리더 승인) | `waitForApi.path`의 `{이름}` 세그먼트는 응답 매칭 와일드카드, 실행기 오류 코드 `INVALID_REQUEST` `DUPLICATE_EXECUTION` `EXECUTION_NOT_FOUND` `ARTIFACT_NOT_FOUND`, 마지막 status 이벤트에 `failureType`·`failureMessage`, `timeoutMs`·대기 시간 초과는 `FAILED`+`TIMEOUT` | 생성 때 알 수 없는 id가 경로에 있으면 대기할 수 없었고, 시간 초과의 판정이 없었다. 시간 초과를 `ERROR`가 아니라 `FAILED`로 두는 이유: 성공 기준의 장애 주입에 지연 장애가 들어가므로 느림을 제품 결함으로 잡아야 탐지율을 잴 수 있다. 정상 목업 사이트의 지연은 오탐 측정 때 따로 본다 (리더 결정) |
+| 초기화와 장애 주입 분리 | 대상 사이트 `POST /reset`은 데이터만 되돌리고 활성 장애는 유지, 장애는 `DELETE /faults`로만 해제 | 케이스마다 reset을 부르므로 reset이 장애를 지우면 성공 기준(심은 장애 탐지율)을 플랫폼 실행으로 잴 수 없다. API 변경 없이 대상 사이트 규칙만으로 해결 (backend 제안, 리더 결정) |
+| 실패 지문과 처음 발생 (backend M4-2, 리더 승인) | 지문 = SHA-256(케이스, failureType, 마지막 실패 시도의 첫 실패 단계 종류·제목, 기대·실제 값, 불일치 항목 이름). 비교 대상 실행에서 같은 지문으로 실패했으면 처음 발생을 이어받음 | 같은 케이스가 같은 단계에서 같은 값으로 실패해야 "계속 실패"로 보고 처음 발생을 잇는다 |
+| 분석 입력의 콘솔 오류 (backend M4-2, 리더 승인) | MVP에서는 `consoleErrors`를 보내지 않음 | 실행기가 콘솔 오류를 저장하지 않는다. MVP 한계로 명시 |
+| 원인 후보 근거 검사 (backend M4-2, 리더 승인) | 백엔드는 `evidence`가 비어 있지 않은지만 검사. 실제 값과의 일치는 AI 책임 | 백엔드가 자연어 근거를 요청 값과 대조하기는 어렵고, AI가 요청 값만 인용하는 규칙을 이미 갖고 있다 |
+| 재실행 검증 (backend M4-2, 리더 승인) | 재생성으로 비활성된 케이스는 400, targetUrl 없음은 409 `TARGET_URL_MISSING` | 대체된 케이스는 다시 실행할 대상이 아니고, URL 규칙은 `startRun`과 같게 |
+| 작업 재전송 입력 | `async_job.request_payload`(JSONB)에 다시 보낼 때 필요한 사용자 입력만 저장. 지금은 시나리오 재생성 `feedback` | 백엔드 재시작·AI 작업 유실 뒤 재전송 때 의견이 빠지지 않게 한다 (backend-engineer 제안, M2-3) |
+
+## ADR-023 FR-02~07 사용자 결정 U1~U4 — 확정 (사용자, 2026-11-10)
+
+선택지와 장단점은 C1 변경 기록(`_workspace/02_contract-architect_changes.md` (b))에 있다. 네 건 모두 추천안(A)으로 정했다.
+
+| # | 사안 | 결정 | 반영 |
+|---|---|---|---|
+| U1 | local 저장소(ADR-021)에서는 presigned URL이 없어 실행기가 증거를 올릴 수 없음 | 백엔드가 실행기에서 받아 감. 실행기는 S3·백엔드에 접근하지 않음 | runner-api `getExecutionArtifact` 추가, `ExecutionRequest.uploads` 제거, `Execution.artifacts`, ADR-005 |
+| U2 | UI-02-5 캡처는 생성 중에 일부 시나리오가 이미 승인돼 있음 | 시나리오는 생성 작업이 끝난 뒤 한꺼번에 표시 (계약 유지). `GUARD_RETRY` 행은 시나리오 1건 재생성 때만 보임 | state-machines TestRequest·Scenario (C1에서 적은 그대로) |
+| U3 | 실행기는 1건씩만 실행하는데 계약은 "프로젝트당 1개" | 플랫폼 전체에서 진행 중 실행 1개 (`RUN_ALREADY_ACTIVE` 전체 기준) | state-machines Run, `startRun`·`rerunRun` 설명 |
+| U4 | UI-03 로그 탭 `sc-03.spec.ts`(시나리오 단위) vs 케이스 단위 spec | 케이스 단위(`tc-xx.spec.ts`). UI-03 탭은 실행 중인 케이스의 spec | ADR-012 충돌표, traceability |
+
 ## ADR-012 자료가 충돌할 때의 우선순위 — 제안
 
 1. 사용자가 직접 정한 내용, 2. 이 문서의 결정, 3. 요구사항서, 4. WBS, 5. UI 캡처, 6. 파이프라인·아키텍처 그림, 7. `develope` 베이스라인과 팀 PoC, 8. 경쟁 도구 분석 HTML (참고만).
@@ -215,4 +254,6 @@ AWS 자격 증명 없이 개발과 통합 검증을 할 수 있게 `STORAGE_TYPE
 | WBS는 테스트 사이트 ERD·API 완료, 자료는 폴더에 없음 | 받으면 `harness/references/`에 추가. 그 전에는 `target-site-contract.md`의 형식으로 목업 사용 (WBS 4.5.1) |
 | UI-01 캡처는 업로드 직후 문서별 인덱싱("인덱싱 중 68%") | 사용자 결정으로 구축 버튼 기준 유지. 업로드 후 "구축 대기" (ADR-018) |
 | UI-01 캡처 배지 "Playwright 연결 확인", 실제 확인은 HTTP GET | 사용자 결정으로 문구를 "연결 확인"으로 바꿈 (ADR-019) |
+| UI-02-5 캡처는 생성 중에 다른 시나리오가 승인돼 있음 | 시나리오는 생성이 끝난 뒤 한꺼번에 표시 (ADR-023 U2) |
+| UI-03 로그 탭 `sc-03.spec.ts`(시나리오 단위), UI-04는 `tc-12.spec.ts` | 케이스 단위로 통일. UI-03 탭은 실행 중인 케이스의 spec (ADR-023 U4) |
 | UI-01 캡처에 없는 문서·지식 베이스 상태 문구 | `state-machines.md` 표의 문구를 쓴다 (구축 대기, 인덱싱 실패, 건너뜀, 미구축, 구축 중, 최신, 재구축 필요, 구축 실패). 프론트가 캡처 스타일로 설계 |

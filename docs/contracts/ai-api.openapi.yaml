@@ -54,6 +54,8 @@ paths:
     post:
       operationId: startRequestRefinement
       summary: 자연어 요청을 RAG Top 3 근거로 N개 후보로 정제 (WBS 4.5.3, FR-02)
+      description: |
+        LLM이 설정되지 않았어도 202로 받고, 작업을 FAILED(error.code LLM_NOT_CONFIGURED, retryable false)로 끝낸다.
       requestBody:
         required: true
         content:
@@ -66,6 +68,10 @@ paths:
     post:
       operationId: startScenarioGeneration
       summary: 선택된 요청으로 시나리오·케이스 생성, 가드 검증 최대 3회 (WBS 4.5.3~4.5.5)
+      description: |
+        LLM이 설정되지 않았어도 202로 받고, 작업을 FAILED(error.code LLM_NOT_CONFIGURED, retryable false)로 끝낸다.
+        진행 단계(progress.phase)는 RETRIEVE → PLAN(시나리오 목록 정하기) → GENERATE ⇄ GUARD 순이다.
+        가드 실패 뒤 재생성 중이면 progress.message가 "가드 실패: … 재생성 중" 문장이고, "(N/3회)"는 붙이지 않는다(화면이 attempt로 붙임).
       requestBody:
         required: true
         content:
@@ -165,7 +171,9 @@ components:
         FAILED 작업의 error.code. KB_BUILD에서 쓰는 값은
         DOCUMENT_DOWNLOAD_FAILED(원본 읽기 실패), DOCUMENT_CHECKSUM_MISMATCH(체크섬 불일치), DOCUMENT_PARSE_FAILED(형식·ID 오류),
         INDEX_WRITE_FAILED(인덱스 파일 저장 실패), LLM_UNAVAILABLE·LLM_TIMEOUT·LLM_NOT_CONFIGURED(임베딩 호출), INTERNAL_ERROR(처리하지 못한 예외)다.
-        문서 오류가 여러 종류면 PARSE > CHECKSUM > DOWNLOAD 순으로 하나를 고른다. 새 값은 이 목록에 먼저 추가한다.
+        문서 오류가 여러 종류면 PARSE > CHECKSUM > DOWNLOAD 순으로 하나를 고른다.
+        검색을 쓰는 작업(REQUEST_REFINE, SCENARIO_GENERATE, TEST_QUERY_GENERATE, FAILURE_ANALYZE)은 인덱스 파일이 없으면 KNOWLEDGE_BASE_MISSING,
+        구축 때와 임베딩 모델이 다르면 EMBEDDING_MODEL_MISMATCH(재구축 필요, retryable false)다. 새 값은 이 목록에 먼저 추가한다.
       enum:
         - LLM_UNAVAILABLE
         - LLM_TIMEOUT
@@ -176,6 +184,7 @@ components:
         - DOCUMENT_PARSE_FAILED
         - INDEX_WRITE_FAILED
         - KNOWLEDGE_BASE_MISSING
+        - EMBEDDING_MODEL_MISMATCH
         - INTERNAL_ERROR
     JobType: { type: string, enum: [KB_BUILD, REQUEST_REFINE, SCENARIO_GENERATE, TEST_QUERY_GENERATE, FAILURE_ANALYZE] }
     JobStatus: { type: string, enum: [QUEUED, RUNNING, SUCCEEDED, FAILED, CANCELLED] }
@@ -197,11 +206,12 @@ components:
         progress:
           type: object
           properties:
-            phase: { type: string, examples: [RETRIEVE, GENERATE, GUARD, INDEX] }
+            phase: { type: string, examples: [RETRIEVE, PLAN, GENERATE, GUARD, INDEX] }
             percent: { type: integer, minimum: 0, maximum: 100 }
-            attempt: { type: integer, description: 가드 재시도 회차 }
+            attempt: { type: integer, description: '가드 재시도 회차. 1이 첫 생성, 2 이상이면 가드 실패 뒤 재생성' }
             maxAttempts: { type: integer }
-            message: { type: string, description: UI-02-5 가드 실패 문구로 그대로 표시할 수 있는 문장 }
+            scenarioCode: { type: [string, 'null'], description: SCENARIO_GENERATE에서 지금 처리 중인 시나리오 코드 (예 SC-06) }
+            message: { type: string, description: 'UI-02-5 가드 실패 문구로 그대로 표시할 수 있는 문장. 회차 표시 (N/3회)는 넣지 않는다' }
         result:
           oneOf:
             - $ref: '#/components/schemas/KnowledgeBaseBuildResult'
@@ -283,7 +293,7 @@ components:
       required: [projectId, text]
       properties:
         projectId: { type: string, format: uuid }
-        text: { type: string, maxLength: 500 }
+        text: { type: string, minLength: 1, maxLength: 500 }
         candidateCount: { type: integer, minimum: 1, maximum: 6, default: 4 }
         topK: { type: integer, minimum: 1, maximum: 10, default: 3 }
     RefinementResult:
@@ -309,17 +319,18 @@ components:
         testRequestCode: { type: string }
         requestText: { type: string }
         firstScenarioNumber: { type: integer, minimum: 1, default: 1 }
-        firstCaseNumber: { type: integer, minimum: 1, default: 1 }
+        firstCaseNumber: { type: integer, minimum: 1, default: 1, description: 새 케이스 번호의 시작. 재생성 때는 요청 안에서 쓴 적 없는 번호(최댓값+1)를 백엔드가 준다 }
         regenerate:
-          description: 시나리오 1건 재생성 시 기존 내용과 사용자 의견
+          description: 시나리오 1건 재생성 시 기존 내용과 사용자 의견. scenarioCode가 없으면 400 INVALID_REQUEST
           type: [object, 'null']
+          required: [scenarioCode]
           properties:
             scenarioCode: { type: string }
             previous: { $ref: '#/components/schemas/GeneratedScenario' }
             feedback: { type: string }
     GeneratedCase:
       type: object
-      required: [code, title, type, scopes, steps, expectedResult]
+      required: [code, title, type, scopes, steps, expectedResult, expectedValues]
       properties:
         code: { type: string }
         title: { type: string }
@@ -341,20 +352,22 @@ components:
           items: { $ref: '#/components/schemas/ExpectedValue' }
     ExpectedValue:
       type: object
+      description: expected와 consistencyOnly(true) 중 하나만 쓰고, consistencyOnly면 reason이 필수다 (platform-api ExpectedValue, ADR-017).
       required: [label]
       properties:
         label: { type: string }
         expected: { type: string }
         consistencyOnly: { type: boolean }
         reason: { type: string }
+    GuardFailureKind:
+      type: string
+      description: CATALOG_GAP은 재생성으로 해결되지 않으므로 카탈로그 수정이 필요하다는 뜻이다 (WBS 4.5.5).
+      enum: [SCHEMA_INVALID, UNKNOWN_REQUIREMENT, UNKNOWN_API, UNKNOWN_TEST_ID, UNKNOWN_VARIABLE, NO_ASSERTION, MISSING_EXPECTED, EXPECTED_NOT_APPROVED, CATALOG_GAP]
     GuardFailure:
       type: object
       required: [kind, message]
       properties:
-        kind:
-          type: string
-          enum: [SCHEMA_INVALID, UNKNOWN_REQUIREMENT, UNKNOWN_API, UNKNOWN_TEST_ID, UNKNOWN_VARIABLE, NO_ASSERTION, MISSING_EXPECTED, EXPECTED_NOT_APPROVED, CATALOG_GAP]
-          description: CATALOG_GAP은 재생성으로 해결되지 않으므로 카탈로그 수정이 필요하다는 뜻이다 (WBS 4.5.5).
+        kind: { $ref: '#/components/schemas/GuardFailureKind' }
         message: { type: string }
         subject: { type: string, examples: [cart-remove-button] }
     GeneratedScenario:
@@ -378,6 +391,7 @@ components:
             attempts: { type: integer, minimum: 1, maximum: 3 }
             failures:
               type: array
+              description: 마지막 시도의 가드 실패만 담는다. 통과했으면 빈 배열. 지난 시도 이력은 넣지 않는다
               items: { $ref: '#/components/schemas/GuardFailure' }
         testCases:
           type: array
@@ -405,8 +419,16 @@ components:
         testCase: { $ref: '#/components/schemas/GeneratedCase' }
         availableVariables:
           type: array
-          description: TEST_DATA 문서에 있는 변수 이름. LLM은 값을 보지 않고 {{이름}}으로만 참조한다. 없는 이름을 쓰면 가드가 거부한다.
+          description: |
+            TEST_DATA 문서의 variables와 secrets 이름. 값은 보내지 않는다. LLM은 {{이름}}으로만 참조하고, 없는 이름을 쓰면 가드가 거부한다.
+            생성된 TestQuery의 variables는 비워 두며, 값은 실행 때 백엔드가 채운다 (target-site-contract.md "테스트 데이터").
           items: { type: string }
+        queryApiBaseUrl:
+          type: [string, 'null']
+          format: uri
+          description: |
+            프로젝트 설정의 읽기 전용 조회 API 주소(platform Project.queryApiBaseUrl 그대로). 있으면 가드가 dbChecks[].path가 이 주소의 경로로 시작하는지 검사하고, 아니면 UNKNOWN_API로 재생성한다.
+            없으면 지금처럼 명세의 읽기 전용 GET인지만 검사한다. 백엔드는 이와 별개로 준비 단계에서 같은 규칙을 다시 검사한다 (state-machines.md Run).
         previousError:
           description: 이전 변환이 컴파일이나 스키마 검증에 실패한 경우의 오류. 다음 시도에 반영한다.
           type: [string, 'null']
@@ -427,13 +449,17 @@ components:
               items: { $ref: '#/components/schemas/GuardFailure' }
     FailureAnalysisRequest:
       type: object
-      required: [projectId, caseCode, caseTitle, expectedResult, failureMessage, steps, apiCalls, verifications]
+      description: FAILED 케이스만 보낸다. 비밀값과 secretCaptures 값은 넣지 않는다.
+      required: [projectId, caseCode, caseTitle, expectedResult, failureType, failureMessage, steps, apiCalls, verifications]
       properties:
         projectId: { type: string, format: uuid }
         caseCode: { type: string }
         caseTitle: { type: string }
         requirementRef: { type: [string, 'null'] }
         expectedResult: { type: string }
+        failureType:
+          $ref: '#/components/schemas/FailureType'
+          description: 규칙으로 정한 실패 유형. AI는 이 값을 바꾸지 않고 원인 후보의 근거로 쓴다
         failureMessage: { type: string }
         attempts: { type: integer }
         failedAttempts: { type: integer }
@@ -475,15 +501,16 @@ components:
               verdict: { $ref: '#/components/schemas/Verdict' }
         consoleErrors:
           type: array
+          description: 'MVP에서는 보내지 않는다(빈 배열 또는 생략). 실행기의 브라우저 콘솔 오류를 로그로만 남기고 저장하지 않기 때문이다. AI는 이 값 없이도 분석해야 한다'
           items: { type: string }
         specSource: { type: string }
     FailureAnalysisResult:
       type: object
-      required: [kind, severity, failureType, affectedFeatures, rootCauses]
+      description: failureType은 돌려주지 않는다. 실패 유형은 백엔드가 규칙으로 정한다 (state-machines.md "실패 원인 분석").
+      required: [kind, severity, affectedFeatures, rootCauses]
       properties:
         kind: { const: FAILURE_ANALYZE }
         severity: { $ref: '#/components/schemas/Severity' }
-        failureType: { $ref: '#/components/schemas/FailureType' }
         affectedFeatures:
           type: array
           items: { type: string }
