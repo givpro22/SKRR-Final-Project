@@ -1,0 +1,188 @@
+# FR-06 / 성공 기준 "탐지한 장애의 70% 이상에서 실제 원인을 1순위로 제시".
+# 각 항목은 장애를 심은 실행에서 백엔드가 보낼 FailureAnalysisRequest(요청 값)와 정답 원인이다.
+# 장애 id는 runner/test/fixtures/target-site의 FAULTS와 같다. 판정: 1순위 후보 설명에 rootCauseKeywords 중 하나가 있으면 정답.
+# 하네스 초안이며 팀 검토 전이다. 실제 장애 주입 실행 결과로 요청 값을 바꿔 쓰는 것을 권한다.
+- faultId: cart-total-ui-mismatch
+  description: 장바구니 화면 합계가 API 합계보다 1,000원 크다
+  rootCause: 화면 합계 계산·표시 오류
+  rootCauseKeywords: [화면 표시]
+  request:
+    caseCode: TC-01
+    caseTitle: 장바구니 합계 금액 확인
+    requirementRef: FR-CART-04
+    expectedResult: 화면·API·DB 합계가 같다
+    failureType: DATA_MISMATCH
+    failureMessage: 교차 검증 '장바구니 합계 금액'이 일치하지 않아요
+    attempts: 3
+    failedAttempts: 3
+    steps:
+      - { order: 4, kind: API, title: 장바구니 API, status: PASSED, expectedValue: "200", actualValue: "200", schemaCheck: PASSED }
+      - { order: 6, kind: UI, title: 화면 합계, status: PASSED, actualValue: "76,000원" }
+    apiCalls:
+      - { method: GET, path: /api/cart, statusCode: 200, durationMs: 21 }
+    verifications:
+      - { itemLabel: 장바구니 합계 금액, uiValue: "76,000원", apiValue: "75000", dbValue: "75000", verdict: MISMATCH }
+- faultId: cart-add-500
+  description: 장바구니 담기 API가 500을 돌려준다
+  rootCause: 장바구니 담기 서버 처리 오류
+  rootCauseKeywords: [서버 오류]
+  request:
+    caseCode: TC-02
+    caseTitle: 장바구니 담기 정상 처리
+    requirementRef: FR-CART-01
+    expectedResult: 상품이 장바구니에 담긴다
+    failureType: API_ERROR
+    failureMessage: 기대한 상태 코드 201가 아니라 500를 받았어요
+    attempts: 3
+    failedAttempts: 3
+    steps:
+      - { order: 3, kind: API, title: "장바구니 담기 버튼 클릭 후 POST /cart/items 응답 확인", status: FAILED, expectedValue: "201", actualValue: "500", detail: 기대한 상태 코드 201가 아니라 500를 받았어요 }
+    apiCalls:
+      - { method: POST, path: /api/auth/login, statusCode: 200, durationMs: 30 }
+      - { method: POST, path: /api/cart/items, statusCode: 500, durationMs: 18 }
+    verifications: []
+- faultId: cart-schema-break
+  description: 장바구니 API의 totalAmount가 문자열이다
+  rootCause: 응답 구조(필드 타입)가 명세와 다름
+  rootCauseKeywords: [응답 구조]
+  request:
+    caseCode: TC-03
+    caseTitle: 장바구니 조회
+    requirementRef: FR-CART-04
+    expectedResult: 장바구니 API가 명세 구조로 응답한다
+    failureType: API_SCHEMA_MISMATCH
+    failureMessage: "응답 구조가 명세와 달라요: $.totalAmount 는 integer여야 함"
+    attempts: 3
+    failedAttempts: 3
+    steps:
+      - { order: 5, kind: API, title: 장바구니 API, status: FAILED, schemaCheck: FAILED, expectedValue: "200", actualValue: "200", detail: "응답 구조가 명세와 달라요: $.totalAmount 는 integer여야 함" }
+    apiCalls:
+      - { method: GET, path: /api/cart, statusCode: 200, durationMs: 19 }
+    verifications: []
+- faultId: remove-button-missing
+  description: 장바구니 화면에 삭제 버튼이 없다
+  rootCause: 삭제 버튼 요소가 화면에서 사라짐
+  rootCauseKeywords: [cart-remove-button]
+  request:
+    caseCode: TC-04
+    caseTitle: 장바구니 상품 삭제
+    requirementRef: FR-CART-03
+    expectedResult: 삭제 버튼을 누르면 상품이 사라진다
+    failureType: ELEMENT_NOT_FOUND
+    failureMessage: "locator.click: Timeout 10000ms exceeded."
+    attempts: 3
+    failedAttempts: 3
+    steps:
+      - { order: 2, kind: UI, title: 장바구니 화면, status: PASSED }
+      - { order: 3, kind: UI, title: 삭제 버튼 클릭, status: FAILED, detail: "locator.click: Timeout 10000ms exceeded.\n(call log) waiting for getByTestId('cart-remove-button')" }
+    apiCalls:
+      - { method: GET, path: /api/cart, statusCode: 200, durationMs: 15 }
+    verifications: []
+- faultId: qty-no-validation
+  description: 수량 100도 받아들인다
+  rootCause: 수량 범위 검증 누락
+  rootCauseKeywords: [검증]
+  request:
+    caseCode: TC-05
+    caseTitle: 장바구니 수량 변경 경계값 100
+    requirementRef: FR-CART-02
+    expectedResult: 범위 밖 수량은 400으로 거부된다
+    failureType: API_ERROR
+    failureMessage: 기대한 상태 코드 400가 아니라 200를 받았어요
+    attempts: 3
+    failedAttempts: 3
+    steps:
+      - { order: 3, kind: API, title: "PATCH /cart/items/1001 호출", status: FAILED, expectedValue: "400", actualValue: "200" }
+    apiCalls:
+      - { method: PATCH, path: /api/cart/items/1001, statusCode: 200, durationMs: 22 }
+    verifications: []
+- faultId: login-slow
+  description: 로그인 API가 20초 늦게 응답한다
+  rootCause: 로그인 API 응답 지연
+  rootCauseKeywords: [시간]
+  request:
+    caseCode: TC-06
+    caseTitle: 회원 로그인
+    requirementRef: FR-MEM-01
+    expectedResult: 로그인 후 상품 화면으로 이동한다
+    failureType: TIMEOUT
+    failureMessage: POST /api/auth/login 응답이 10000ms 안에 오지 않았어요
+    attempts: 3
+    failedAttempts: 3
+    steps:
+      - { order: 4, kind: API, title: 로그인 버튼, status: FAILED, detail: POST /api/auth/login 응답이 10000ms 안에 오지 않았어요 }
+    apiCalls: []
+    verifications: []
+- faultId: api-total-wrong
+  description: (변형) API 합계만 틀리고 화면·DB는 맞다
+  rootCause: API 응답 합계 계산 오류
+  rootCauseKeywords: [API 응답]
+  request:
+    caseCode: TC-07
+    caseTitle: 결제 합계 금액 확인
+    requirementRef: FR-ORD-01
+    expectedResult: 결제 화면·API·DB 합계가 같다
+    failureType: DATA_MISMATCH
+    failureMessage: 교차 검증 '결제 합계 금액'이 일치하지 않아요
+    attempts: 3
+    failedAttempts: 3
+    steps:
+      - { order: 5, kind: API, title: 주문 API, status: PASSED, expectedValue: "201", actualValue: "201" }
+    apiCalls:
+      - { method: POST, path: /api/orders, statusCode: 201, durationMs: 40 }
+    verifications:
+      - { itemLabel: 결제 합계 금액, uiValue: "45,000원", apiValue: "50000", dbValue: "45000", expectedValue: "45000", verdict: MISMATCH }
+- faultId: db-qty-wrong
+  description: (변형) DB에 저장된 수량만 다르다
+  rootCause: DB 저장 로직 오류
+  rootCauseKeywords: [DB 저장]
+  request:
+    caseCode: TC-08
+    caseTitle: 장바구니 수량 변경
+    requirementRef: FR-CART-02
+    expectedResult: 화면·API·DB 수량이 같다
+    failureType: DATA_MISMATCH
+    failureMessage: 교차 검증 '장바구니 상품 수량'이 일치하지 않아요
+    attempts: 3
+    failedAttempts: 3
+    steps: []
+    apiCalls:
+      - { method: PATCH, path: /api/cart/items/1001, statusCode: 200, durationMs: 25 }
+    verifications:
+      - { itemLabel: 장바구니 상품 수량, uiValue: "3", apiValue: "3", dbValue: "2", verdict: MISMATCH }
+- faultId: review-forbidden
+  description: (변형) 구매한 회원의 리뷰가 403으로 거부된다
+  rootCause: 리뷰 권한 검사 오류
+  rootCauseKeywords: [권한]
+  request:
+    caseCode: TC-09
+    caseTitle: 상품 리뷰 작성
+    requirementRef: FR-REV-01
+    expectedResult: 구매한 회원은 리뷰를 남긴다
+    failureType: API_ERROR
+    failureMessage: 기대한 상태 코드 201가 아니라 403를 받았어요
+    attempts: 3
+    failedAttempts: 3
+    steps:
+      - { order: 4, kind: API, title: "리뷰 등록 버튼 클릭 후 POST /products/{productId}/reviews 응답 확인", status: FAILED, expectedValue: "201", actualValue: "403" }
+    apiCalls:
+      - { method: POST, path: /api/products/1001/reviews, statusCode: 403, durationMs: 17 }
+    verifications: []
+- faultId: price-text-wrong
+  description: (변형) 상품 상세 가격 문구가 다르다
+  rootCause: 가격 표시가 기대값과 다름
+  rootCauseKeywords: [기대값]
+  request:
+    caseCode: TC-10
+    caseTitle: 상품 상세 가격 확인
+    requirementRef: FR-PRD-02
+    expectedResult: 상세 화면 가격이 25,000원이다
+    failureType: ASSERTION_FAILED
+    failureMessage: expect(locator).toHaveText(expected) failed
+    attempts: 3
+    failedAttempts: 2
+    steps:
+      - { order: 3, kind: UI, title: 가격 문구, status: FAILED, expectedValue: "25,000원", actualValue: "27,000원" }
+    apiCalls:
+      - { method: GET, path: /api/products/1001, statusCode: 200, durationMs: 12 }
+    verifications: []

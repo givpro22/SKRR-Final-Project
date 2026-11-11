@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import math
 import re
@@ -35,6 +36,8 @@ class FakeLLMClient:
     responses: dict[str, FakeResponse] = field(default_factory=dict)
     dim: int = 384
     calls: list[FakeCall] = field(default_factory=list)
+    # 호출마다 기다리는 시간(초). 화면에서 중간 상태(인덱싱 중, 가드 재생성 중)를 보기 위한 개발용 (FAKE_LLM_DELAY_MS)
+    delay_seconds: float = 0.0
 
     @property
     def provider(self) -> str:
@@ -49,6 +52,8 @@ class FakeLLMClient:
 
     async def generate_json(self, *, system: str, user: str, schema: type[ModelT]) -> ModelT:
         self.calls.append(FakeCall(system=system, user=user, schema=schema.__name__))
+        if self.delay_seconds:
+            await asyncio.sleep(self.delay_seconds)
         response = self.responses.get(schema.__name__)
         if response is None:
             raise LLMOutputInvalidError(f"가짜 클라이언트에 {schema.__name__} 응답이 등록되지 않았어요")
@@ -59,6 +64,8 @@ class FakeLLMClient:
             raise LLMOutputInvalidError(f"응답이 {schema.__name__} 스키마와 맞지 않아요: {exc}") from exc
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
+        if self.delay_seconds:
+            await asyncio.sleep(self.delay_seconds)
         return [hash_embedding(t, self.dim) for t in texts]
 
 

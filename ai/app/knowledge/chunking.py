@@ -55,8 +55,8 @@ def split_requirements(lines: list[Line]) -> list[RequirementSection]:
                 if not current.title and title:
                     current.title = title
             current.body.append(line.text.strip())
-        elif _HEADING.match(line.text):
-            # ID 없는 마크다운 제목은 새 단락의 시작이므로 앞 요구사항에 붙이지 않는다.
+        elif line.heading or _HEADING.match(line.text):
+            # ID 없는 제목(마크다운 #, DOCX 제목 스타일)은 새 단락의 시작이므로 앞 요구사항에 붙이지 않는다.
             current = None
         elif current is not None and line.text.strip():
             current.body.append(line.text.strip())

@@ -168,3 +168,21 @@ def test_catalog_splits_large_page() -> None:
     elements = ",".join(f'{{"testId":"el-{i}","page":"/big"}}' for i in range(65))
     parsed = parse_catalog("d", f'{{"elements":[{elements}]}}'.encode(), "application/json", "c.json")
     assert [c.source_id for c in parsed.chunks] == ["/big (1)", "/big (2)", "/big (3)"]
+
+
+def test_docx_heading_style_ends_previous_requirement() -> None:
+    import io
+
+    import docx
+
+    document = docx.Document()
+    document.add_heading("FR-CART-01 담기", level=2)
+    document.add_paragraph("담는다.")
+    document.add_heading("주문", level=1)
+    document.add_paragraph("이 문단은 어떤 요구사항에도 속하지 않는다.")
+    document.add_heading("FR-ORD-01 주문", level=2)
+    buf = io.BytesIO()
+    document.save(buf)
+    parsed = parse_requirement("d", buf.getvalue(), DOCX, "a.docx")
+    assert parsed.chunks[0].text == "FR-CART-01 담기\n담는다."
+    assert parsed.chunks[0].title == "담기"

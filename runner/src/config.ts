@@ -7,6 +7,10 @@ export interface RunnerConfig {
   /** RUNNER_ALLOWED_TARGET_HOSTS. 비어 있으면 모든 대상을 거부한다. */
   allowedHosts: AllowedHost[];
   connectivityTimeoutMs: number;
+  /** 끝난 실행의 증거 파일 보관 시간 (계약: 최소 30분) */
+  artifactRetentionMs: number;
+  /** 단계 하나의 동작 시간 제한 (요소 찾기, 응답 기다리기) */
+  actionTimeoutMs: number;
 }
 
 function intFrom(value: string | undefined, fallback: number, name: string): number {
@@ -25,5 +29,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): RunnerConfig {
     logLevel: env.LOG_LEVEL?.trim() || "info",
     allowedHosts: parseAllowedHosts(env.RUNNER_ALLOWED_TARGET_HOSTS ?? ""),
     connectivityTimeoutMs: intFrom(env.CONNECTIVITY_TIMEOUT_MS, 10_000, "CONNECTIVITY_TIMEOUT_MS"),
+    artifactRetentionMs: Math.max(30 * 60_000, intFrom(env.RUNNER_ARTIFACT_RETENTION_MS, 30 * 60_000, "RUNNER_ARTIFACT_RETENTION_MS")),
+    actionTimeoutMs: intFrom(env.RUNNER_ACTION_TIMEOUT_MS, 10_000, "RUNNER_ACTION_TIMEOUT_MS"),
   };
 }

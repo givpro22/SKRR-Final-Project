@@ -8,25 +8,27 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json && node -e \"const fs=require('fs');fs.cpSync('src/contracts','dist/contracts',{recursive:true});fs.copyFileSync('src/runtime/skrr-runtime.ts','dist/runtime/skrr-runtime.ts')\"",
     "start": "node dist/server.js",
     "dev": "tsx watch src/server.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint .",
-    "test": "node --import tsx --test \"test/**/*.test.ts\""
+    "test": "node --import tsx --import ./test/setup-browsers.ts --test --test-concurrency=1 \"test/**/*.test.ts\"",
+    "target-site": "node --import tsx test/fixtures/target-site/server.ts"
   },
   "dependencies": {
     "@playwright/test": "1.65.0",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
-    "fastify": "5.12.8"
+    "fastify": "5.12.8",
+    "jszip": "3.10.1",
+    "typescript": "5.9.3"
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",
     "@types/node": "22.20.5",
     "eslint": "9.39.5",
     "tsx": "4.23.15",
-    "typescript": "5.9.3",
     "typescript-eslint": "8.72.2"
   }
 }

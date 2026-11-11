@@ -48,9 +48,13 @@ class JobProgress:
     message: str | None = None
     attempt: int | None = None
     max_attempts: int | None = None
+    # SCENARIO_GENERATE에서 지금 처리 중인 시나리오 코드 (예 SC-06)
+    scenario_code: str | None = None
 
     def to_contract(self) -> dict[str, Any]:
         out: dict[str, Any] = {"percent": self.percent}
+        if self.scenario_code is not None:
+            out["scenarioCode"] = self.scenario_code
         if self.phase is not None:
             out["phase"] = self.phase
         if self.message is not None:

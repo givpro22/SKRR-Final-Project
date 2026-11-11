@@ -11,14 +11,25 @@ from uuid import UUID
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
-from app.api.jobs import JobStore, JobType
-from app.api.schemas import KnowledgeBaseBuildRequest
-from app.core.codes import AiProblemCode
+from app.api.jobs import Job, JobStore, JobType
+from app.api.schemas import (
+    FailureAnalysisRequest,
+    KnowledgeBaseBuildRequest,
+    RefinementRequest,
+    ScenarioGenerationRequest,
+    TestQueryGenerationRequest,
+)
+from app.core.codes import AiErrorCode, AiProblemCode
 from app.core.config import Settings
-from app.core.errors import ApiProblem, problem
+from app.core.errors import ApiProblem, JobFailure, problem
 from app.knowledge.build import TYPE_LABEL, BuildDocument, KnowledgeBaseBuilder
 from app.knowledge.models import INDEXED_TYPES, DocumentType
 from app.knowledge.store import check_vector_extension
+from app.llm.client import LLMClient
+from app.pipeline.analysis import AnalysisInput, run_failure_analysis
+from app.pipeline.refine import RefinementInput, run_refinement
+from app.pipeline.scenario import GenerationInput, Regenerate, ScenarioGenerator
+from app.pipeline.testquery import TestQueryInput, run_test_query_generation
 
 router = APIRouter(prefix="/internal/v1")
 
@@ -109,6 +120,93 @@ async def start_knowledge_base_build(
     project_id = str(projectId)
     job = _jobs(request).submit(JobType.KB_BUILD, lambda j: builder.run(j, project_id, documents))
     job.set_progress("QUEUED", 0, "지식 베이스 구축을 시작했어요")
+    return JSONResponse(job.to_contract(), status_code=202)
+
+
+def _llm_or_failure(request: Request) -> LLMClient:
+    """LLM이 설정되지 않았으면 작업을 LLM_NOT_CONFIGURED로 실패시킨다 (이 작업들의 계약 응답은 202·400뿐)."""
+    llm: LLMClient | None = request.app.state.llm
+    if llm is None:
+        raise JobFailure(
+            AiErrorCode.LLM_NOT_CONFIGURED,
+            request.app.state.llm_error or "LLM이 설정되지 않았어요",
+            retryable=False,
+        )
+    return llm
+
+
+@router.post("/requests/refinements", operation_id="startRequestRefinement", status_code=202)
+async def start_request_refinement(body: RefinementRequest, request: Request) -> JSONResponse:
+    settings: Settings = request.app.state.settings
+    inp = RefinementInput(
+        project_id=str(body.projectId),
+        text=body.text,
+        candidate_count=body.candidateCount,
+        top_k=body.topK,
+    )
+
+    async def work(job: Job) -> dict[str, Any]:
+        return await run_refinement(job, inp, _llm_or_failure(request), settings.kb_data_dir)
+
+    job = _jobs(request).submit(JobType.REQUEST_REFINE, work)
+    job.set_progress("QUEUED", 0, "요청 정제를 시작했어요")
+    return JSONResponse(job.to_contract(), status_code=202)
+
+
+@router.post("/scenarios/generations", operation_id="startScenarioGeneration", status_code=202)
+async def start_scenario_generation(body: ScenarioGenerationRequest, request: Request) -> JSONResponse:
+    settings: Settings = request.app.state.settings
+    regen = body.regenerate
+    inp = GenerationInput(
+        project_id=str(body.projectId),
+        test_request_code=body.testRequestCode,
+        request_text=body.requestText,
+        first_scenario_number=body.firstScenarioNumber,
+        first_case_number=body.firstCaseNumber,
+        regenerate=Regenerate(regen.scenarioCode, regen.previous, regen.feedback) if regen else None,
+    )
+
+    async def work(job: Job) -> dict[str, Any]:
+        return await ScenarioGenerator(_llm_or_failure(request), settings.kb_data_dir).run(job, inp)
+
+    job = _jobs(request).submit(JobType.SCENARIO_GENERATE, work)
+    job.set_progress("QUEUED", 0, "시나리오 생성을 시작했어요")
+    if regen:
+        job.progress.scenario_code = regen.scenarioCode
+    return JSONResponse(job.to_contract(), status_code=202)
+
+
+@router.post("/test-queries/generations", operation_id="startTestQueryGeneration", status_code=202)
+async def start_test_query_generation(body: TestQueryGenerationRequest, request: Request) -> JSONResponse:
+    settings: Settings = request.app.state.settings
+    case = body.testCase.model_dump(exclude_none=True)
+    inp = TestQueryInput(
+        project_id=str(body.projectId),
+        scenario=body.scenario.model_dump(),
+        test_case=case,
+        available_variables=list(dict.fromkeys(body.availableVariables)),
+        previous_error=body.previousError,
+        query_api_base_path=(body.queryApiBaseUrl.path or "/") if body.queryApiBaseUrl else None,
+    )
+
+    async def work(job: Job) -> dict[str, Any]:
+        return await run_test_query_generation(job, inp, _llm_or_failure(request), settings.kb_data_dir)
+
+    job = _jobs(request).submit(JobType.TEST_QUERY_GENERATE, work)
+    job.set_progress("QUEUED", 0, f"{body.testCase.code} 실행 정의 생성을 시작했어요")
+    return JSONResponse(job.to_contract(), status_code=202)
+
+
+@router.post("/failure-analyses", operation_id="startFailureAnalysis", status_code=202)
+async def start_failure_analysis(body: FailureAnalysisRequest, request: Request) -> JSONResponse:
+    settings: Settings = request.app.state.settings
+    inp = AnalysisInput(project_id=str(body.projectId), request=body.model_dump(mode="json", exclude_none=True))
+
+    async def work(job: Job) -> dict[str, Any]:
+        return await run_failure_analysis(job, inp, _llm_or_failure(request), settings.kb_data_dir)
+
+    job = _jobs(request).submit(JobType.FAILURE_ANALYZE, work)
+    job.set_progress("QUEUED", 0, f"{body.caseCode} 실패 원인 분석을 시작했어요")
     return JSONResponse(job.to_contract(), status_code=202)
 
 

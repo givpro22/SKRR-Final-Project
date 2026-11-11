@@ -1,0 +1,43 @@
+# FR-02 수용기준: 기능 이름으로 검색하면 해당 명세가 상위 3개 안에 90% 이상.
+# 코퍼스: ai/evals/corpus (평가용 예제 문서). 하네스 초안이며 팀(이다영) 검토 전이다.
+# tag:
+#   name       기능 이름 그대로 또는 거의 그대로 (FR-02 수용기준 대상)
+#   paraphrase 다른 말로 바꾼 요청 (참고 지표. 단어가 겹치지 않으면 가짜 해시 임베딩으로는 못 찾는 것이 정상)
+- { query: 회원 로그인, expected: [FR-MEM-01], tag: name }
+- { query: 로그인, expected: [FR-MEM-01], tag: name }
+- { query: 회원 가입, expected: [FR-MEM-02], tag: name }
+- { query: 회원가입 중복 이메일, expected: [FR-MEM-02], tag: name }
+- { query: 상품 목록 조회, expected: [FR-PRD-01], tag: name }
+- { query: 상품 상세 조회, expected: [FR-PRD-02], tag: name }
+- { query: 상품 상세 가격 확인, expected: [FR-PRD-02], tag: name }
+- { query: 상품 검색, expected: [FR-SRCH-01], tag: name }
+- { query: 검색어로 상품 검색, expected: [FR-SRCH-01], tag: name }
+- { query: 장바구니 담기, expected: [FR-CART-01], tag: name }
+- { query: 장바구니에 상품 담기, expected: [FR-CART-01], tag: name }
+- { query: 장바구니 수량 변경, expected: [FR-CART-02], tag: name }
+- { query: 수량 변경, expected: [FR-CART-02], tag: name }
+- { query: 장바구니 상품 삭제, expected: [FR-CART-03], tag: name }
+- { query: 장바구니 삭제, expected: [FR-CART-03], tag: name }
+- { query: 장바구니 합계 금액, expected: [FR-CART-04], tag: name }
+- { query: 합계 금액 계산, expected: [FR-CART-04, FR-ORD-01], tag: name }
+- { query: 주문 결제, expected: [FR-ORD-01], tag: name }
+- { query: 결제하기, expected: [FR-ORD-01], tag: name }
+- { query: 주문 내역 조회, expected: [FR-ORD-02], tag: name }
+- { query: 주문 목록 보기, expected: [FR-ORD-02], tag: name }
+- { query: 주문 취소, expected: [FR-ORD-03], tag: name }
+- { query: 쿠폰 목록 조회, expected: [FR-CPN-01], tag: name }
+- { query: 보유 쿠폰 보기, expected: [FR-CPN-01], tag: name }
+- { query: 쿠폰 적용, expected: [FR-CPN-02], tag: name }
+- { query: 쿠폰 최소 주문 금액, expected: [FR-CPN-02], tag: name }
+- { query: 상품 리뷰 작성, expected: [FR-REV-01], tag: name }
+- { query: 리뷰 별점, expected: [FR-REV-01], tag: name }
+- { query: 배송지 변경, expected: [FR-DLV-01], tag: name }
+- { query: 우편번호 입력, expected: [FR-DLV-01], tag: name }
+- { query: 카트에 물건 넣기, expected: [FR-CART-01], tag: paraphrase }
+- { query: 할인권 사용, expected: [FR-CPN-02], tag: paraphrase }
+- { query: 구매 취소하기, expected: [FR-ORD-03], tag: paraphrase }
+- { query: 아이디 비밀번호로 들어가기, expected: [FR-MEM-01], tag: paraphrase }
+- { query: 산 물건 후기 남기기, expected: [FR-REV-01], tag: paraphrase }
+- { query: 받는 주소 바꾸기, expected: [FR-DLV-01], tag: paraphrase }
+- { query: 담은 물건 빼기, expected: [FR-CART-03], tag: paraphrase }
+- { query: 총액이 맞는지, expected: [FR-CART-04, FR-ORD-01], tag: paraphrase }

@@ -5,7 +5,7 @@ import { after, before, test } from "node:test";
 import { buildApp } from "../src/app.js";
 import { parseAllowedHosts } from "../src/allowlist.js";
 import type { RunnerConfig } from "../src/config.js";
-import { ExecutionSlot } from "../src/executionSlot.js";
+import type { ExecutionManager } from "../src/execution/manager.js";
 
 let target: Server;
 let base: string;
@@ -44,6 +44,8 @@ function config(overrides: Partial<RunnerConfig> = {}): RunnerConfig {
     logLevel: "silent",
     allowedHosts: parseAllowedHosts("127.0.0.1"),
     connectivityTimeoutMs: 2000,
+    artifactRetentionMs: 30 * 60_000,
+    actionTimeoutMs: 5000,
     ...overrides,
   };
 }
@@ -66,11 +68,11 @@ test("runnerHealth", async () => {
 });
 
 test("runnerReady: 브라우저 없으면 503, 실행 중이면 503, 유휴이고 브라우저 있으면 200", async () => {
-  const slot = new ExecutionSlot();
+  const manager = { busy: false, activeId: null as string | null, shutdown: () => Promise.resolve() };
   let browserOk = false;
   const app = buildApp({
     config: config(),
-    slot,
+    manager: manager as unknown as ExecutionManager,
     browserStatus: () => ({ ok: browserOk, detail: browserOk ? "Chromium 준비됨" : "Chromium이 설치되어 있지 않아요" }),
     logger: false,
   });
@@ -82,11 +84,12 @@ test("runnerReady: 브라우저 없으면 503, 실행 중이면 503, 유휴이�
   res = await app.inject({ method: "GET", url: "/internal/v1/readyz" });
   assert.equal(res.statusCode, 200);
 
-  assert.equal(slot.tryAcquire("e1"), true);
-  assert.equal(slot.tryAcquire("e2"), false);
+  manager.busy = true;
+  manager.activeId = "e1";
   res = await app.inject({ method: "GET", url: "/internal/v1/readyz" });
   assert.equal(res.statusCode, 503);
-  slot.release("e1");
+  assert.match(res.json<{ checks: { idle: string } }>().checks.idle, /e1/);
+  manager.busy = false;
   res = await app.inject({ method: "GET", url: "/internal/v1/readyz" });
   assert.equal(res.statusCode, 200);
   await app.close();

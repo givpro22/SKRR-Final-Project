@@ -1,0 +1,13 @@
+# FR-03(요청 정제) 성공 기준: 모호한 요청 10건 중 8건 이상이 올바른 명세로 정제된다.
+# 판정: 자동(근거 일치) = 첫 번째 후보의 근거에 기대 요구사항 ID가 하나라도 있음. 사람 판정은 결과 JSON의 후보 문장으로 따로 한다.
+# 코퍼스: ai/evals/corpus. 하네스 초안이며 팀(AI 담당) 검토 전이다.
+- { request: 장바구니 잘 되는지 봐 줘, expected: [FR-CART-01, FR-CART-02, FR-CART-03, FR-CART-04], criterion: 장바구니 기능 중 하나를 명세 ID와 함께 고른다 }
+- { request: 결제 금액 이상한지 확인, expected: [FR-ORD-01, FR-CART-04, FR-CPN-02], criterion: 합계·결제 금액 요구사항을 근거로 든다 }
+- { request: 쿠폰 써지는지, expected: [FR-CPN-02], criterion: 쿠폰 적용(최소 주문 금액)을 근거로 든다 }
+- { request: 로그인 확인, expected: [FR-MEM-01], criterion: 회원 로그인을 근거로 든다 }
+- { request: 주문하고 취소까지, expected: [FR-ORD-01, FR-ORD-03], criterion: 주문 결제 또는 주문 취소를 근거로 든다 }
+- { request: 상품 찾기 테스트, expected: [FR-SRCH-01, FR-PRD-01], criterion: 상품 검색 또는 목록을 근거로 든다 }
+- { request: 수량 바꾸면 합계 맞는지, expected: [FR-CART-02, FR-CART-04], criterion: 수량 변경·합계 금액을 근거로 든다 }
+- { request: 리뷰 남기기, expected: [FR-REV-01], criterion: 상품 리뷰 작성을 근거로 든다 }
+- { request: 주소 바꾸는 거, expected: [FR-DLV-01], criterion: 배송지 변경을 근거로 든다 }
+- { request: 가입 테스트, expected: [FR-MEM-02], criterion: 회원 가입을 근거로 든다 }

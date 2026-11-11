@@ -16,6 +16,8 @@ TEXT_TYPES = {"text/plain", "text/markdown", "text/x-markdown"}
 class Line:
     text: str
     location: str  # "3쪽", "문단 12", "표 1 2행", "줄 40"
+    # DOCX 제목 스타일(Title, Heading N) 문단. ID가 없으면 앞 요구사항에 붙이지 않는다.
+    heading: bool = False
 
 
 def detect_format(content_type: str, key: str) -> str:
@@ -90,8 +92,10 @@ def _docx_lines(data: bytes) -> list[Line]:
         tag = child.tag.rsplit("}", 1)[-1]
         if tag == "p":
             para_no += 1
-            text = Paragraph(child, document).text
-            lines.extend(Line(t, f"문단 {para_no}") for t in text.splitlines())
+            paragraph = Paragraph(child, document)
+            style = (paragraph.style.name if paragraph.style is not None else "") or ""
+            heading = style == "Title" or style.startswith("Heading")
+            lines.extend(Line(t, f"문단 {para_no}", heading) for t in paragraph.text.splitlines())
         elif tag == "tbl":
             table_no += 1
             table = Table(child, document)

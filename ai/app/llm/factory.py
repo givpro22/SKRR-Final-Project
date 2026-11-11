@@ -4,14 +4,15 @@ from __future__ import annotations
 
 from app.core.config import Settings
 from app.llm.client import LLMClient, LLMConfigError, ResilientLLMClient
-from app.llm.fake import FakeLLMClient
+from app.llm.fake_responders import make_fake_llm
 
 
 def build_llm_client(settings: Settings) -> LLMClient:
     provider = settings.llm_provider.strip().lower()
     inner: LLMClient
     if provider == "fake":
-        inner = FakeLLMClient(dim=settings.fake_embedding_dim)
+        # 예제 문서에 맞는 결정적 응답기를 등록한 가짜 클라이언트 (app/llm/fake_responders.py)
+        inner = make_fake_llm(settings.fake_embedding_dim, delay_seconds=settings.fake_llm_delay_ms / 1000)
     else:
         raise LLMConfigError(
             f"LLM_PROVIDER '{settings.llm_provider}'는 아직 구현되지 않았어요. ADR-010에서 제공자를 정한 뒤 추가해요"

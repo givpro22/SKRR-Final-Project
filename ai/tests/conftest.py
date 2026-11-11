@@ -109,3 +109,29 @@ def _spec_2020() -> Any:
 @pytest.fixture(scope="session")
 def contract() -> ContractValidator:
     return ContractValidator()
+
+
+# --- M2: 예제 코퍼스로 지식 베이스를 만든 앱 ---
+
+EVAL_DIM = 64
+
+
+def fake_llm(dim: int = EVAL_DIM) -> Any:
+    """예제 응답기를 등록한 가짜 LLM. 재시도 대기는 0으로 둔다."""
+    from app.llm.client import ResilientLLMClient
+    from app.llm.fake_responders import make_fake_llm
+
+    return ResilientLLMClient(make_fake_llm(dim), timeout_seconds=5, max_retries=1, backoff_min=0, backoff_max=0)
+
+
+@pytest.fixture
+async def corpus_project(tmp_path: Path) -> tuple[Path, str]:
+    """evals/corpus를 실제 구축 경로로 넣은 지식 베이스 디렉터리와 projectId."""
+    import uuid
+
+    from evals.fr02_retrieval import CORPUS, build_corpus_kb
+
+    kb_dir = tmp_path / "kb"
+    project_id = str(uuid.uuid4())
+    await build_corpus_kb(CORPUS, kb_dir, fake_llm(), project_id)
+    return kb_dir, project_id

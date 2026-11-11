@@ -36,6 +36,8 @@ class Settings(BaseSettings):
     llm_timeout_seconds: float = Field(default=60.0, alias="LLM_TIMEOUT_SECONDS")
     llm_max_retries: int = Field(default=3, alias="LLM_MAX_RETRIES")
     fake_embedding_dim: int = Field(default=384, alias="FAKE_EMBEDDING_DIM")
+    # 개발·QA 전용: 가짜 LLM·임베딩 호출마다 지연(ms). 중간 진행 상태를 화면에서 보려고 쓴다.
+    fake_llm_delay_ms: int = Field(default=0, ge=0, le=30000, alias="FAKE_LLM_DELAY_MS")
 
     # 작업 저장소 (ADR-007: 프로세스 메모리, 재시작하면 사라짐)
     max_retained_jobs: int = Field(default=500, alias="MAX_RETAINED_JOBS")

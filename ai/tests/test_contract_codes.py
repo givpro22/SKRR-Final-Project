@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import yaml
 
-from app.core.codes import AiErrorCode, AiProblemCode
+from app.core.codes import AiErrorCode, AiProblemCode, GuardFailureKind
 from tests.conftest import CONTRACTS
 
 
@@ -19,3 +19,7 @@ def test_error_codes_match_contract() -> None:
 
 def test_problem_codes_match_contract() -> None:
     assert {c.value for c in AiProblemCode} == _enum("AiProblemCode")
+
+
+def test_guard_failure_kinds_match_contract() -> None:
+    assert {c.value for c in GuardFailureKind} == _enum("GuardFailureKind")
