@@ -23,8 +23,8 @@ class ApplicationIntegrationTest extends IntegrationTest {
     @Test
     void flywayAppliesSchemaAndSeedsDefaultUser() {
         Integer applied = jdbc.queryForObject(
-                "select count(*) from flyway_schema_history where success and version in ('1','2','3')", Integer.class);
-        assertThat(applied).isEqualTo(3);
+                "select count(*) from flyway_schema_history where success and version in ('1','2','3','4')", Integer.class);
+        assertThat(applied).isEqualTo(4);
         String name = jdbc.queryForObject(
                 "select display_name from app_user where id = '00000000-0000-0000-0000-000000000001'", String.class);
         assertThat(name).isEqualTo("기본 사용자");
@@ -73,6 +73,10 @@ class ApplicationIntegrationTest extends IntegrationTest {
         assertThat(operationIds).contains("getCurrentUser", "listProjects", "createProject", "getProject",
                 "updateProject", "verifyTargetSite", "listDocuments", "uploadDocument", "getDocument",
                 "deleteDocument", "getDocumentDownloadLink", "downloadDocumentTemplate", "getKnowledgeBase",
-                "buildKnowledgeBase", "listActivities");
+                "buildKnowledgeBase", "listActivities", "createTestRequest", "getTestRequest",
+                "selectRefinedRequest", "listTestRequests", "listScenarios", "getScenario", "updateScenario",
+                "updateTestCase", "getTestCase", "approveScenario", "rejectScenario", "regenerateScenario",
+                "startRun", "listRuns", "getRun", "cancelRun", "streamRunEvents", "listRunLogs", "listRunApiCalls",
+                "getCaseResultSpec", "getArtifactDownloadLink", "getRunReport", "getCaseResult", "rerunRun");
     }
 }

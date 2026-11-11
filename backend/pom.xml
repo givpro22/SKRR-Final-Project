@@ -88,6 +88,11 @@
             <groupId>software.amazon.awssdk</groupId>
             <artifactId>s3</artifactId>
         </dependency>
+        <!-- 대상 사이트 DB 조회 응답에서 dbChecks.jsonPath 값을 꺼낸다 -->
+        <dependency>
+            <groupId>com.jayway.jsonpath</groupId>
+            <artifactId>json-path</artifactId>
+        </dependency>
 
         <!-- 테스트 -->
         <dependency>

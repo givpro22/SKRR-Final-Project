@@ -14,6 +14,7 @@ import org.springframework.core.io.Resource;
 import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.http.MediaTypeFactory;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -46,8 +47,10 @@ public class LocalStorageController {
         if (!Files.isRegularFile(file)) {
             throw ApiException.notFound("파일");
         }
+        // <img src> 로 바로 쓰는 스크린샷이 보이도록 파일 형식으로 Content-Type 을 정한다 (S3 는 저장할 때 정한 값)
+        MediaType type = MediaTypeFactory.getMediaType(key).orElse(MediaType.APPLICATION_OCTET_STREAM);
         return ResponseEntity.ok()
-                .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                .contentType(type)
                 .header(HttpHeaders.CONTENT_DISPOSITION,
                         ContentDisposition.attachment().filename(filename, StandardCharsets.UTF_8).build().toString())
                 .body(new FileSystemResource(file));

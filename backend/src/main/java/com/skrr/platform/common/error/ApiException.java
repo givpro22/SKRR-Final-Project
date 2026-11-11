@@ -27,6 +27,12 @@ public class ApiException extends RuntimeException {
         return properties;
     }
 
+    /** 400 VALIDATION_FAILED + fieldErrors (Bean Validation 응답과 같은 형식). */
+    public static ApiException invalidField(String field, String message) {
+        return new ApiException(ErrorCode.VALIDATION_FAILED, message,
+                Map.of("fieldErrors", java.util.List.of(Map.of("field", field, "message", message))));
+    }
+
     public static ApiException notFound(String what) {
         return new ApiException(ErrorCode.RESOURCE_NOT_FOUND, what + "을(를) 찾을 수 없습니다");
     }

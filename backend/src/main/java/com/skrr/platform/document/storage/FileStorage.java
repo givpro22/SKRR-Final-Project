@@ -13,6 +13,9 @@ public interface FileStorage {
 
     void delete(String key);
 
+    /** 저장된 파일 본문. 없으면 UncheckedIOException. */
+    byte[] read(String key);
+
     /** 짧은 유효 시간의 다운로드 링크 (S3 presigned URL). */
     PresignedLink presignDownload(String key, String downloadFilename, Duration ttl);
 

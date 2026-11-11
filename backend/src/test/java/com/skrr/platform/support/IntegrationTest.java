@@ -26,11 +26,14 @@ public abstract class IntegrationTest {
 
     protected static final WireMockServer AI = new WireMockServer(WireMockConfiguration.options().dynamicPort());
     protected static final WireMockServer RUNNER = new WireMockServer(WireMockConfiguration.options().dynamicPort());
+    /** 테스트 대상 사이트(초기화·DB 조회·빌드 API) 대역. */
+    protected static final WireMockServer TARGET = new WireMockServer(WireMockConfiguration.options().dynamicPort());
     protected static final Path STORAGE_DIR;
 
     static {
         AI.start();
         RUNNER.start();
+        TARGET.start();
         try {
             STORAGE_DIR = Files.createTempDirectory("skrr-storage-");
         } catch (IOException ex) {
@@ -58,6 +61,13 @@ public abstract class IntegrationTest {
         registry.add("skrr.runner.read-timeout", () -> "2s");
         registry.add("skrr.jobs.polling-enabled", () -> "false");
         registry.add("skrr.jobs.max-consecutive-poll-errors", () -> "3");
+        registry.add("skrr.target.control-token", () -> "test-token");
+        registry.add("skrr.run.ai-poll-interval", () -> "20ms");
+        registry.add("skrr.run.runner-busy-wait", () -> "50ms");
+        registry.add("skrr.run.runner-busy-timeout", () -> "2s");
+        registry.add("skrr.run.case-timeout", () -> "5s");
+        registry.add("skrr.run.case-timeout-grace", () -> "1s");
+        registry.add("skrr.run.heartbeat-ms", () -> "300");
         registry.add("skrr.storage.type", () -> "local");
         registry.add("skrr.storage.local-dir", STORAGE_DIR::toString);
     }
@@ -66,6 +76,7 @@ public abstract class IntegrationTest {
     void resetState() {
         AI.resetAll();
         RUNNER.resetAll();
-        jdbc.execute("TRUNCATE project, async_job CASCADE");
+        TARGET.resetAll();
+        jdbc.execute("TRUNCATE project, async_job, generated_spec CASCADE");
     }
 }

@@ -13,7 +13,10 @@ import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 /**
  * AI 서버 비동기 작업 추적. 백엔드가 재시작해도 열린 작업을 이어서 조회한다.
@@ -47,6 +50,11 @@ public class AsyncJob {
     @Column(nullable = false)
     private short attempt = 1;
 
+    /** 다시 보낼 때 필요한 사용자 입력 (예: 시나리오 재생성 {"feedback": "..."}). 비밀값 금지. */
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "request_payload")
+    private Map<String, Object> requestPayload;
+
     @Column(name = "error_message")
     private String errorMessage;
 
@@ -60,9 +68,14 @@ public class AsyncJob {
     }
 
     public AsyncJob(JobType type, String subjectType, UUID subjectId) {
+        this(type, subjectType, subjectId, null);
+    }
+
+    public AsyncJob(JobType type, String subjectType, UUID subjectId, Map<String, Object> requestPayload) {
         this.type = type;
         this.subjectType = subjectType;
         this.subjectId = subjectId;
+        this.requestPayload = requestPayload;
     }
 
     @PrePersist
@@ -138,6 +151,10 @@ public class AsyncJob {
 
     public int getAttempt() {
         return attempt;
+    }
+
+    public Map<String, Object> getRequestPayload() {
+        return requestPayload;
     }
 
     public String getErrorMessage() {

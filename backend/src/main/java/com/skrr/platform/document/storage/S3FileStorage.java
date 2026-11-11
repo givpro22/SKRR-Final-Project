@@ -38,6 +38,11 @@ public class S3FileStorage implements FileStorage {
     }
 
     @Override
+    public byte[] read(String key) {
+        return s3.getObjectAsBytes(GetObjectRequest.builder().bucket(bucket).key(key).build()).asByteArray();
+    }
+
+    @Override
     public PresignedLink presignDownload(String key, String downloadFilename, Duration ttl) {
         GetObjectRequest get = GetObjectRequest.builder()
                 .bucket(bucket)

@@ -56,6 +56,15 @@ public class LocalFileStorage implements FileStorage {
     }
 
     @Override
+    public byte[] read(String key) {
+        try {
+            return Files.readAllBytes(resolve(key));
+        } catch (IOException ex) {
+            throw new UncheckedIOException("파일을 읽지 못했습니다: " + key, ex);
+        }
+    }
+
+    @Override
     public PresignedLink presignDownload(String key, String downloadFilename, Duration ttl) {
         Instant expiresAt = Instant.now().plus(ttl).truncatedTo(java.time.temporal.ChronoUnit.SECONDS);
         long expires = expiresAt.getEpochSecond();

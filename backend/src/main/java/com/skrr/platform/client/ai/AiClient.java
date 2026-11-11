@@ -27,11 +27,35 @@ public class AiClient {
 
     /** operationId: startKnowledgeBaseBuild. 연결 실패와 5xx는 짧게 재시도한다. */
     public AiJob startKnowledgeBaseBuild(UUID projectId, KnowledgeBaseBuildRequest request) {
+        return start("startKnowledgeBaseBuild", request, "/internal/v1/knowledge-bases/{projectId}/builds", projectId);
+    }
+
+    /** operationId: startRequestRefinement (FR-02). */
+    public AiJob startRequestRefinement(RefinementRequest request) {
+        return start("startRequestRefinement", request, "/internal/v1/requests/refinements");
+    }
+
+    /** operationId: startScenarioGeneration (FR-03). 첫 생성과 시나리오 1건 재생성에 함께 쓴다. */
+    public AiJob startScenarioGeneration(ScenarioGenerationRequest request) {
+        return start("startScenarioGeneration", request, "/internal/v1/scenarios/generations");
+    }
+
+    /** operationId: startTestQueryGeneration (FR-04). 실행 준비 중 실행 작업자가 직접 조회한다. */
+    public AiJob startTestQueryGeneration(TestQueryGenerationRequest request) {
+        return start("startTestQueryGeneration", request, "/internal/v1/test-queries/generations");
+    }
+
+    /** operationId: startFailureAnalysis (FR-06). */
+    public AiJob startFailureAnalysis(FailureAnalysisRequest request) {
+        return start("startFailureAnalysis", request, "/internal/v1/failure-analyses");
+    }
+
+    private AiJob start(String operation, Object body, String path, Object... uriVariables) {
         return HttpClientSupport.withRetry(START_MAX_ATTEMPTS, START_BACKOFF, AiUnavailableException.class,
-                () -> call("startKnowledgeBaseBuild", () -> http.post()
-                        .uri("/internal/v1/knowledge-bases/{projectId}/builds", projectId)
+                () -> call(operation, () -> http.post()
+                        .uri(path, uriVariables)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .body(request)
+                        .body(body)
                         .retrieve()
                         .body(AiJob.class)));
     }

@@ -10,10 +10,19 @@ public record SkrrProperties(
         UUID defaultUserId,
         Client ai,
         Client runner,
+        Target target,
+        Run run,
         Jobs jobs,
         Storage storage) {
 
     public record Client(String baseUrl, Duration connectTimeout, Duration readTimeout) {
+    }
+
+    public record Target(Duration connectTimeout, Duration readTimeout, String controlToken) {
+    }
+
+    public record Run(Duration caseTimeout, Duration caseTimeoutGrace, int maxAttempts, int maxGenerationAttempts, Duration aiPollInterval,
+                      Duration aiJobTimeout, Duration runnerBusyWait, Duration runnerBusyTimeout) {
     }
 
     public record Jobs(boolean pollingEnabled, long pollIntervalMs, int maxConsecutivePollErrors) {
