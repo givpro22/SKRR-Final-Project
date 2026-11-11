@@ -552,7 +552,7 @@ export interface paths {
          * @description 새 실행(rerunOfRunId = 원래 실행)을 만든다. 원래 실행이 끝나지 않았으면 409 RUN_NOT_FINISHED, 플랫폼 어디든 진행 중인 실행이 있으면 409 RUN_ALREADY_ACTIVE.
          *     대상 케이스의 시나리오가 지금 APPROVED가 아니면 409 SCENARIO_NOT_APPROVED. caseResultIds가 이 실행의 것이 아니거나 중복이거나, 대상 케이스가 시나리오 재생성으로 비활성이 됐거나, 비웠는데 FAILED 케이스가 없으면 400 VALIDATION_FAILED.
          *     프로젝트에 targetUrl이 없으면 409 TARGET_URL_MISSING (startRun과 같음).
-         *     케이스 내용(version)이 그대로면 저장된 TestQuery와 spec을 다시 쓴다.
+         *     케이스 내용(version)이 그대로면 저장된 TestQuery를 다시 쓰고(AI 호출 없음), spec은 실행 전에 다시 변환한다 (state-machines.md Run).
          */
         post: operations["rerunRun"];
         delete?: never;

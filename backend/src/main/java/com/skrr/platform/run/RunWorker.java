@@ -649,6 +649,14 @@ public class RunWorker {
                 // 실행기 장애·중단·요청 거부면 사후 조회와 교차 검증을 하지 않는다 (값이 없어 불일치로 보이지 않게)
                 return outcome = verdict(runnerResult, null, false);
             }
+            if ("FAILED".equals(runnerResult.execution().status())) {
+                // 앞 단계(실행기 검사)가 실패하면 뒤 단계(교차 검증)는 하지 않는다 (state-machines.md "API 검사와 교차 검증 판정").
+                // 사후 조회·교차 검증 단계는 SKIPPED 로 남고 verification 을 만들지 않는다 (불일치 KPI 부풀림 방지)
+                if (!crossChecks.isEmpty() || !after.isEmpty()) {
+                    log(runId, StepKind.ASSERT, "실행 단계가 실패해 DB 사후 조회와 교차 검증을 건너뜁니다", caseId);
+                }
+                return outcome = verdict(runnerResult, outcome, false);
+            }
             // d. DB 사후 조회
             Outcome dbOutcome = outcome;
             if (!after.isEmpty()) {

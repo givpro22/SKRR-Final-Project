@@ -202,6 +202,8 @@ CaseResult:  PENDING → RUNNING → PASSED | FAILED | ERROR | CANCELLED
 
 중간 단계가 실패해도 정리 단계는 수행한다. 다음 케이스의 사전조건이 오염되지 않게 하기 위해서다.
 
+실행기 시도가 `FAILED`로 끝나면 DB 사후 조회(AFTER)와 교차 검증(ASSERT)은 하지 않고 `SKIPPED`로 두며 교차 검증 결과(`verification`)를 저장하지 않는다. 케이스 판정과 `failureType`은 실행기 결과 그대로다. 실행기가 통과했는데 캡처 값이 없으면 교차 검증에서 `MISMATCH`다 (아래 "API 검사와 교차 검증 판정", 리더 승인 2026-11-11).
+
 TEARDOWN은 데이터 초기화 API(`POST {testControlUrl}/reset`)를 한 번 더 부르는 것이다. 대상 사이트 계약에 별도 정리 API가 없기 때문이다. 정리가 실패하면 로그(`log`, kind `TEARDOWN`)와 단계 상태만 남기고 케이스 판정은 바꾸지 않는다 (ADR-022).
 
 ## API 검사와 교차 검증 판정
@@ -231,6 +233,8 @@ API 단계는 다음 순서로 검사한다. 앞 단계가 실패하면 뒤 단�
 | 비교할 출처가 처음부터 지정되지 않음 | `NOT_APPLICABLE` |
 
 설정 누락을 결함으로 세지 않고(오탐률), 실행 중 실패는 숨기지 않기 위해 둘을 구분한다 (리더 승인, 2026-11-10).
+
+케이스 단위 적용: 위 "앞 단계가 실패하면 뒤 단계는 하지 않는다"에 따라, **실행기 시도가 `FAILED`면 DB 사후 조회(AFTER)와 교차 검증(ASSERT)을 하지 않고 두 단계를 `SKIPPED`로 둔다. `verification` 행을 만들지 않으므로 `kpis.crossCheckMismatches`에도 세지 않는다. 케이스 판정과 `failureType`은 실행기 결과 그대로다.** 정리(TEARDOWN)는 그대로 한다 (리더 승인, 2026-11-11). 위 표의 "실행 중에 얻지 못함 → `MISMATCH`"는 실행기가 `PASSED`로 끝났는데 캡처나 DB 조회 값이 빈 경우에만 해당한다.
 
 ## 실패 원인 분석 (UI-04, FR-06)
 

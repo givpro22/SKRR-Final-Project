@@ -73,7 +73,16 @@ export function CaseDetailPanel({ caseResultId, runCode, nav, onRerunCase, rerun
       )}
 
       <Facts d={d} runCode={runCode} />
-      {d.verifications.length > 0 && <CrossCheck items={d.verifications} />}
+      {d.verifications.length > 0 ? (
+        <CrossCheck items={d.verifications} />
+      ) : (
+        (failed || error) && (
+          // 실행기 시도가 실패하면 사후 조회·교차 검증 단계를 건너뛴다 (state-machines "API 검사와 교차 검증 판정")
+          <Section title="화면 · API · DB 교차 검증">
+            <p className="rounded-xl bg-page px-4 py-3 text-xs text-muted">실행 단계에서 실패해 교차 검증을 하지 않았어요</p>
+          </Section>
+        )
+      )}
       {d.reproductionSteps.length > 0 && <Steps steps={d.reproductionSteps} />}
       <RootCauses d={d} />
       <Evidence d={d} />

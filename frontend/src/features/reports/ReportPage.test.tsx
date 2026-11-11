@@ -113,6 +113,7 @@ describe("UI-04 결과 리포트", () => {
     const panel = await screen.findByRole("region", { name: "케이스 상세" });
     await within(panel).findByText(/TC-02/);
     expect(within(panel).queryByText(/원인 후보/)).not.toBeInTheDocument();
+    expect(within(panel).queryByText("실행 단계에서 실패해 교차 검증을 하지 않았어요")).not.toBeInTheDocument();
     expect(within(panel).queryByText(/실패 1 \/ 1/)).not.toBeInTheDocument();
   });
 
@@ -185,6 +186,8 @@ describe("UI-04 결과 리포트", () => {
     expect(await within(panel).findByText(/환경 문제로 판정하지 못한 케이스입니다/)).toBeInTheDocument();
     expect(within(panel).getByText("실행기에 연결할 수 없습니다")).toBeInTheDocument();
     expect(within(panel).getByText("분석 실패: LLM 응답 시간 초과")).toBeInTheDocument();
+    // 실행 단계에서 멈춰 교차 검증이 없으면 표 대신 안내
+    expect(within(panel).getByText("실행 단계에서 실패해 교차 검증을 하지 않았어요")).toBeInTheDocument();
     expect(within(panel).getByText("저장된 스크린샷·trace·HAR가 없습니다")).toBeInTheDocument();
   });
 

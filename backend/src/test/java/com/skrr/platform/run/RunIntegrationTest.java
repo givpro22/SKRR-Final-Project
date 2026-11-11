@@ -376,6 +376,12 @@ class RunIntegrationTest extends IntegrationTest {
         assertThat(awaitEnd(runId)).isEqualTo("FAILED");
         assertThat(jdbc.queryForList("select failure_type from case_result", String.class))
                 .containsOnly("ELEMENT_NOT_FOUND");
+        // 실행 단계가 실패하면 교차 검증을 하지 않는다: verification 없음, ASSERT·DB AFTER 단계 SKIPPED (Q-M4-1)
+        assertThat(jdbc.queryForObject("select count(*) from verification", Integer.class)).isZero();
+        assertThat(jdbc.queryForList("select distinct status from run_step where kind = 'ASSERT'", String.class))
+                .containsOnly("SKIPPED");
+        mvc.perform(get("/api/v1/runs/{id}/report", runId)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.kpis.crossCheckMismatches").value(0));
 
         RunStubs.execution(RUNNER, "ERROR", "3", "3", null);
         String second = startOk(sc1);
